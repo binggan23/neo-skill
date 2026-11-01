@@ -332,7 +332,7 @@ def test_existing_spec_is_marked_baseline_invalid(approved: Path) -> None:
     assert marker["baseline_valid"] is False
     assert marker["invalidated_by"] == "CR-001"
     assert marker["prd"] == "PRD-001"
-    assert marker["prd_hash"] == hash_before
+    assert marker["baseline_hash"] == hash_before
     assert marker["invalidated_at"]
 
 
@@ -645,6 +645,31 @@ def test_rejected_cr_with_changed_content_needs_a_new_cr(approved: Path) -> None
     assert approved_again.code == 0, approved_again
     assert prd_meta(approved)["version"] == 2
     assert baseline_status(approved).json["data"]["valid"] is True
+
+
+def test_cr_marker_keeps_dev_baseline_fields(approved: Path) -> None:
+    # ticket 05 的 `dev start` 会写 .baseline.yaml（baseline_hash/baseline_version/...）；
+    # CR 打失效标记时必须保留这些字段，否则 05 无法再判断「Spec 基线是否陈旧」。
+    spec_dir = approved / "06-specs/resume/PRD-001-batch-parse"
+    existing = {
+        "prd": "PRD-001", "module": "resume",
+        "spec_dir": "06-specs/resume/PRD-001-batch-parse",
+        "baseline_hash": prd_meta(approved)["content_hash"],
+        "baseline_version": 1, "created_at": "2026-03-02T09:00:00+08:00",
+        "baseline_valid": True,
+    }
+    write(spec_dir / ".baseline.yaml", yaml.safe_dump(existing, sort_keys=False,
+                                                     allow_unicode=True))
+
+    cr_create(approved)
+
+    marker = yaml.safe_load(read(spec_dir / ".baseline.yaml"))
+    assert marker["baseline_valid"] is False
+    assert marker["invalidated_by"] == "CR-001"
+    for key, value in existing.items():
+        if key == "baseline_valid":
+            continue
+        assert marker[key] == value, key
 
 
 # ------------------------------------------------------------------ 查询

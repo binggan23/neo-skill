@@ -168,22 +168,30 @@ def mark_downstream(workspace: Workspace, record: PrdRecord, *, cr_id: str,
 
     不存在就跳过：CR 不能凭空造出 `06-specs/`、`verification.md`、`07-acceptance/`
     （那些归 ticket 05/06/07）。标记只追加，不改原有正文。
+
+    `.baseline.yaml` 由 ticket 05 的 `dev start` 写入（`baseline_hash`/`baseline_version` 等）；
+    这里**合并非覆盖**：保留 05 写的字段，只追加失效标记，否则 05 的「Spec 基线是否陈旧」
+    判断会失去比较基准。
     """
     marked: list[str] = []
-    payload = {
+    additions = {
         "prd": record.id,
         "prd_version": record.version,
-        "prd_hash": prd_hash,
         "baseline_valid": False,
         "invalidated_by": cr_id,
         "invalidated_at": at,
         "invalidated_by_actor": actor,
-        "reason": "PRD 内容基线已变更，重新批准前不得继续正式开发（SRS-FR-050）",
+        "invalidated_reason": "PRD 内容基线已变更，重新批准前不得继续正式开发（SRS-FR-050）",
     }
 
     specs = spec_dir(workspace, record)
     if specs.is_dir():
         path = specs / MARKER_FILE
+        existing = fsutil.load_yaml(path, default={})
+        payload = dict(existing) if isinstance(existing, dict) else {}
+        payload.update(additions)
+        if prd_hash:  # 没有 05 基线时也留下当时的 PRD hash，便于追溯
+            payload.setdefault("baseline_hash", prd_hash)
         fsutil.atomic_write_yaml(path, payload)
         marked.append(workspace.rel(path))
 

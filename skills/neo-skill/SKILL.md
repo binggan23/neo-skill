@@ -59,9 +59,18 @@ npx skills@latest update
 | `acceptance` | Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过、收尾同步 `closeout` | 已可用 |
 | `index` | 生成受管理索引区块（backlog / feature-map / PRD 索引），区块外内容保留 | 已可用 |
 | `recover` | 中断事务的基线校验恢复、残留锁的显式清理 | 已可用 |
-| `lint` | 结构、引用、hash、基线与收尾一致性检查 | 计划中 |
+| `lint` | 结构、引用、hash、基线与收尾一致性检查（只读；有 error 退出码 1） | 已可用 |
 
-「计划中」的命令当前不注册：调用会返回用法错误，而不是伪装成功。
+`lint` 是**流程治理**能力，不是不可绕过的安全边界（SRS §9）：它能发现绕过 Skill 直接改文件
+留下的不一致（`HASH_MISMATCH`、`MANAGED_BLOCK_MODIFIED`、`CLOSEOUT_INCOMPLETE` 等），
+但无法实时阻止这种编辑。
+
+```bash
+flow-core lint                                  # 全量检查（人类可读）
+flow-core lint --json                           # 机器可读，data.findings / data.counts
+flow-core lint --only CLOSEOUT_INCOMPLETE       # 只看某一类（逗号分隔可多个）
+flow-core lint rules                            # 项目规则基线 vs 随包规则的版本/字段一致性
+```
 
 残留锁与中断事务的恢复：
 

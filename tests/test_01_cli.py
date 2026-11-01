@@ -156,19 +156,17 @@ def test_bare_invocation_is_usage_error(project: Path) -> None:
     assert "init" in proc.stderr
 
 
-@pytest.mark.parametrize("group", ["lint"])
-def test_future_command_groups_are_not_registered_as_empty_shells(
-    project: Path, group: str
-) -> None:
-    """未实现的命令组不得注册：调用应是用法错误，而不是伪装成功。
+def test_all_declared_command_groups_are_registered(project: Path) -> None:
+    """ticket 09 后命令组全部上线：九组都可调用（不再有「计划中」的占位组）。
 
-    `req`（ticket 02）、`prd`（ticket 03）、`dev`（ticket 05）、`acceptance`（ticket 07）、
-    `index`/`recover`（ticket 08）实现后已从本参数化列表移除（命令组按 ticket 逐个上线）。
+    历史上未实现的组必须**不注册**（调用是用法错误而非伪装成功），
+    `req`(02)/`prd`(03)/`dev`(05)/`acceptance`(07)/`index`+`recover`(08)/`lint`(09)
+    上线后逐一从那个参数化列表移出；列表清空即收敛成这条断言。
     """
-    result = run_cli(project, group, "list")
-
-    assert result.code == 2
-    assert result.json is None
+    declared = ("init", "doctor", "req", "prd", "dev", "acceptance", "index", "recover", "lint")
+    for group in declared:
+        result = run_cli(project, group, "--help", json_output=False)
+        assert result.code == 0, f"{group} 未注册：{result.stderr[-500:]}"
 
 
 def test_doctor_reports_corrupt_lock_file_without_crashing(project: Path) -> None:

@@ -47,10 +47,22 @@ tests/                                 flow-core CLI 黑盒测试
 | `init`、`doctor`、`req`、`prd`、`dev`（门禁/启动/状态/范围检查/验证/提交验收） | 已可用 |
 | `acceptance`（Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过、收尾同步 `closeout`） | 已可用 |
 | `index`（受管理索引区块）、`recover`（中断事务与残留锁） | 已可用 |
-| `lint` | 计划中（未注册，调用返回用法错误） |
+| `lint`（`check`/`rules`，`--only CODE,CODE`） | 已可用 |
 
 所有命令支持 `--root`、`--json`、`--actor`、`--confirm`；`--json` 统一返回
 `success` / `command` / `artifacts` / `errors` / `next_actions`。退出码 `0`/`1`/`2`。
+
+`lint` 是只读的结构检查（必需产物、ID/目录一致性、孤儿 Spec、失效引用、非法状态、
+基线/验证/验收失效、收尾未完成、索引被改写、规则基线漂移）：有 error → 退出码 1，
+只有 warning → 0。输出在打印前统一脱敏（凭据不会回显）。
+
+## CI
+
+`.github/workflows/ci.yml`：Linux × Python 3.11/3.12/3.13 矩阵，装 `pyyaml pytest`，
+跑 `compileall`，**按文件循环**跑 pytest（不跑 `pytest tests/` 全量），并在临时初始化项目上
+跑 `doctor`、`lint` 与一次「违规必须非零退出」的负向验证。
+**lint/CI 是流程治理，不是不可绕过的安全边界**：它们能发现绕过 Skill 直接改文件留下的不一致，
+无法实时阻止这种编辑（SRS §9）。
 
 ## 开发
 
@@ -63,6 +75,11 @@ python3 -m pytest tests/test_05_dev.py
 python3 -m pytest tests/test_06_verification.py
 python3 -m pytest tests/test_07_acceptance.py
 python3 -m pytest tests/test_08_closeout.py
+python3 -m pytest tests/test_09_lint.py
+python3 -m pytest tests/test_09_request_changes.py
+python3 -m pytest tests/test_09_ci.py
+python3 -m pytest tests/test_09_security.py
+python3 -m pytest tests/test_09_perf.py       # 1000 需求/200 PRD 规模基准
 python3 -m compileall skills/neo-skill/runtime
 ```
 

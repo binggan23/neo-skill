@@ -13,6 +13,7 @@ dist/
 htmlcov/
 
 # 本地工具
+.pi/
 .DS_Store
 .idea/
 .vscode/

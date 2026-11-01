@@ -18,11 +18,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from typing import Sequence
 
-from . import __version__
+from . import __version__, redact
 from .commands import acceptance as acceptance_command
 from .commands import dev as dev_command
 from .commands import doctor as doctor_command
@@ -141,9 +142,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _emit(result: Result, want_json: bool) -> int:
     if want_json:
-        print(result.to_json())
+        # SRS-NFR-007：打印前统一脱敏（凭据形态不得回显）。只改输出，不改文件与业务状态。
+        payload = redact.redact_payload(result.to_dict())
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         text = render_human(result)
         if text:
-            print(text)
+            print(redact.redact_text(text))
     return EXIT_OK if result.success else EXIT_FAIL

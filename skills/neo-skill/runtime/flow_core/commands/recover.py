@@ -14,10 +14,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Any
 
 from .. import closeout, locks, metadata, state, transactions
-from ..output import FlowError, Result
+from ..output import EXIT_USAGE, FlowError, Result
 from ..rules import Rules
 from ..workspace import Workspace
 
@@ -35,8 +36,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     from ..cli import global_options_parser
 
     parents = [global_options_parser()]
+    # `doctor` 与 `locks` 的建议文案是 `recover --release-lock <对象> --actor <id> --confirm`，
+    # 因此这里也支持「顶层开关」写法，与 `recover release-lock --object <对象>` 等价。
+    parser.add_argument("--release-lock", nargs="?", const="", default=None, metavar="OBJ",
+                        help="清理指定对象的残留锁（等价于 recover release-lock --object OBJ）；"
+                             "对象也可用 --object 给出")
+    parser.add_argument("--object", dest="object", default=None, metavar="OBJ",
+                        help="锁对象编号（配合 --release-lock 使用）")
+
     subparsers = parser.add_subparsers(dest="recover_command", metavar="<子命令>",
-                                       required=True)
+                                       required=False)
 
     listing = subparsers.add_parser("list", parents=parents,
                                     help="列出事务（未完成的排在最前）")
@@ -54,13 +63,22 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     sub = getattr(args, "recover_command", None)
+    flag = getattr(args, "release_lock", None)
+    if flag is not None:
+        # 兼容 `recover --release-lock [<对象>] [--object <对象>]` 写法
+        # （doctor 与 LOCK_CONFLICT 的建议文案就是这个形状）
+        args.object = str(flag).strip() or str(getattr(args, "object", None) or "").strip()
+        if not args.object:
+            print("ERROR: --release-lock 需要给出对象编号（--release-lock PRD-001 或 "
+                  "--release-lock --object PRD-001）", file=sys.stderr)
+            raise SystemExit(EXIT_USAGE)
+        sub = "release-lock"
+    if sub is None:
+        # 与 argparse「缺少必需子命令」一致：用法错误 → 退出码 2
+        print("ERROR: 缺少 recover 子命令；可用：" + "、".join(sorted(_HANDLERS)),
+              file=sys.stderr)
+        raise SystemExit(EXIT_USAGE)
     handler = _HANDLERS.get(sub)
-    if handler is None:
-        raise FlowError(
-            "USAGE",
-            "缺少 recover 子命令",
-            suggestion="可用子命令：" + "、".join(sorted(_HANDLERS)),
-        )
     try:
         return handler(workspace, rules, args)
     except FlowError as exc:

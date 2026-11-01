@@ -63,6 +63,14 @@ npx skills@latest update
 
 「计划中」的命令当前不注册：调用会返回用法错误，而不是伪装成功。
 
+残留锁与中断事务的恢复：
+
+```bash
+flow-core recover list                                  # 看有哪些未完成事务
+flow-core recover run --tx TX-... --actor alice --confirm  # 校验基线后续跑（冲突则拒绝）
+flow-core recover --release-lock PRD-001 --actor alice --confirm   # 只在进程已结束时清锁
+```
+
 ### 常用起步
 
 ```bash

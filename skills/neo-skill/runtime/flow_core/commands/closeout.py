@@ -216,7 +216,7 @@ def _success(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
     data["pending"] = []
     data["main_req"] = entry.get("main_req") or (record.source_reqs or [None])[0]
     data["main_req_status"] = _main_req_status(workspace, rules, data["main_req"])
-    data["scenarios"] = closeout.scenario_statuses(workspace, rules, record)
+    data["scenarios"] = closeout.on_disk_scenarios(workspace, record)
     data["index_ok"] = index.evaluate(workspace, rules)["ok"]
     for note in notes or []:
         result.notes.append(note)

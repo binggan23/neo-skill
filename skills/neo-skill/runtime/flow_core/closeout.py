@@ -240,9 +240,18 @@ def _scenario_existing(workspace: Workspace, readme_rel: str) -> dict[str, dict[
 
 def scenario_statuses(workspace: Workspace, rules: Rules,
                       record: metadata.PrdRecord) -> dict[str, str]:
-    """全项目的场景状态（本次 PRD 的场景固定为「已验收」）。"""
+    """收尾后应有的场景状态（本次 PRD 的场景固定为「已验收」）。"""
     return {scenario: row["status"]
             for scenario, row in _scenario_table(workspace, rules, record).items()}
+
+
+def on_disk_scenarios(workspace: Workspace, record: metadata.PrdRecord) -> dict[str, str]:
+    """**磁盘上当前**的场景状态（模块 README 受管理区块里写的，可能是空的）。
+
+    `closeout-status` 报告这个（事实），收尾目标另见 `target_scenarios`。
+    """
+    existing = _scenario_existing(workspace, module_readme_rel(workspace, record))
+    return {scenario: row["status"] for scenario, row in sorted(existing.items())}
 
 
 def _scenario_table(workspace: Workspace, rules: Rules,
@@ -430,7 +439,8 @@ def evaluate_closeout(workspace: Workspace, rules: Rules,
     """收尾进度投影（**只读**，不取锁、不写文件）。
 
     返回：`confirmed`、`closeout_state`、`tx`、`pending_ops`、`main_req_status`、
-    `scenarios`、`index_ok`、`index_problems`、`resumable`、`problems`、`closeout_ok`。
+    `scenarios`（磁盘事实）、`target_scenarios`（收尾目标）、`index_ok`、`index_problems`、
+    `resumable`、`closeout_ok`、`problems`、`acceptance_problems`、`stale_reasons`。
 
     ticket 09 的 lint 用它判「验收后是否未收尾」，不要自己重算同步状态。
     """
@@ -466,7 +476,8 @@ def evaluate_closeout(workspace: Workspace, rules: Rules,
         "pending_ops": pending,
         "main_req": plan.main_req if plan is not None else None,
         "main_req_status": main_req_status,
-        "scenarios": dict(plan.scenarios) if plan is not None else {},
+        "scenarios": on_disk_scenarios(workspace, record),
+        "target_scenarios": dict(plan.scenarios) if plan is not None else {},
         "index_ok": bool(index_state["ok"]),
         "index_problems": list(index_state["problems"]),
         "resumable": bool(pending),

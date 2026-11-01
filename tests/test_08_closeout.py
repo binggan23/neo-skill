@@ -365,6 +365,8 @@ def test_closeout_status_reports_progress(inited_project: Path):
     assert data["resumable"] is True
     assert data["pending_ops"], "未收尾时必须列出待办"
     assert data["index_ok"] is False
+    assert data["scenarios"] == {}, "收尾前磁盘上还没有场景状态"
+    assert data["target_scenarios"]["SC-RES-01"] == "已验收"
 
     assert h8.closeout(inited_project, extra=("--actor", "alice")).ok
     done = h8.closeout_status(inited_project)
@@ -551,6 +553,17 @@ def test_release_lock_removes_dead_pid(inited_project: Path):
     lock = _write_lock(inited_project, "PRD-001", 999_999)
     result = h8.recover(inited_project, "release-lock", "--object", "PRD-001",
                         "--actor", "alice", "--confirm")
+    assert result.ok, result
+    assert result.json["data"]["released"] is True
+    assert not lock.exists()
+
+
+def test_release_lock_accepts_doctor_suggested_form(inited_project: Path):
+    """`doctor` 的建议文案是 `recover --release-lock <对象> --actor <id> --confirm`：
+    这条命令必须能照抄执行。"""
+    lock = _write_lock(inited_project, "PRD-001", 999_999)
+    result = run_cli(inited_project, "recover", "--release-lock", "PRD-001",
+                     "--actor", "alice", "--confirm", env=ENV)
     assert result.ok, result
     assert result.json["data"]["released"] is True
     assert not lock.exists()

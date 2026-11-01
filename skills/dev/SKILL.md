@@ -150,9 +150,13 @@ flow-core dev status --prd PRD-001
 - `data.baseline`：`.baseline.yaml` 原文（CR 会追加 `invalidated_by`/`invalidated_at`）。
 
 任一为 false 就是「基线失效」：不得继续开发、不得沿用旧 Spec 结论。
-处理路径是把 PRD 走 CR → 重新评审 → 重新批准 → 重新 `dev start`（旧产物保留可查，
-但继续开发要按新基线重建）。`dev start` 在 `.baseline.yaml` 的 `baseline_valid: false`
-时返回 `BASELINE_INVALID`，不会重建。
+处理路径是把 PRD 走 CR → 重新评审 → 重新批准 → 重新 `dev start`：
+
+- PRD 已是 `DEVELOPING` 但 `.baseline.yaml` 被 CR 标成 `baseline_valid: false`
+  → `dev start` 返回 `BASELINE_INVALID`（不允许在失效基线上继续开发）；
+- PRD 重新批准后回到 `APPROVED` 且版本/hash 都变了 → `dev gate` 会提示「旧 Spec 基线已失效，
+  本次启动将按新基线重建」，`dev start` 会重写 `.baseline.yaml`、把三份产物的 front matter
+  更新到新 `baseline_version`/`baseline_hash`（**正文原样保留**，`artifacts` 里是 `updated`）。
 
 ## 命令速查
 

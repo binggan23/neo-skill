@@ -119,11 +119,54 @@ def invalidation(record: PrdRecord) -> dict[str, Any] | None:
     return dict(value) if isinstance(value, dict) and value else None
 
 
-def active_invalidation(record: PrdRecord) -> dict[str, Any] | None:
+def active_invalidation(*args: Any) -> dict[str, Any] | None:
+    """基线是否「仍然失效」，两种调用形状（ticket 09 追加，保持向后兼容）：
+
+    1. `active_invalidation(record)` —— 只看 metadata 的 `baseline_invalidated.active`
+       （ticket 04/05 的用法，语义不变）；
+    2. `active_invalidation(workspace, rules, record)` —— **叠加未决变更**：
+       PRD 里还有 status 为 OPEN 的 CR 时，即使正文 hash 没变、甚至失效标记已被手工
+       抹掉，也认为基线失效（共同设计 §13 待办 3：`BASELINE_STALE` 不能只看 hash）。
+
+    返回 None 表示有效；否则返回证据字典：
+
+        {"source": "marker" | "open_cr" | "marker+open_cr",
+         "cr": CR 编号或 None, "marker": 失效标记或 None, "reasons": [...]}
+    """
+    if len(args) == 1:
+        marker = invalidation(args[0])
+        if marker is not None and marker.get("active", False):
+            return marker
+        return None
+    if len(args) != 3:
+        raise TypeError(
+            "active_invalidation() 接受 (record) 或 (workspace, rules, record)")
+    workspace, _rules, record = args
+    return active_invalidation_evidence(workspace, record)
+
+
+def active_invalidation_evidence(workspace: Workspace,
+                                 record: PrdRecord) -> dict[str, Any] | None:
+    """失效证据（含未决 CR）。供 lint / 验收 / 收尾按需叠加判定。"""
     marker = invalidation(record)
-    if marker is not None and marker.get("active", False):
-        return marker
-    return None
+    active_marker = marker if marker is not None and marker.get("active", False) else None
+    pending = crs.open_crs(workspace, record)
+    open_cr = pending[0] if pending else None
+    if active_marker is None and open_cr is None:
+        return None
+    reasons: list[str] = []
+    if active_marker is not None:
+        reasons.append(REASON_INVALIDATED)
+    if open_cr is not None:
+        reasons.append("CR_OPEN")
+    source = "marker" if open_cr is None else (
+        "open_cr" if active_marker is None else "marker+open_cr")
+    return {
+        "source": source,
+        "cr": open_cr.id if open_cr is not None else (active_marker or {}).get("cr"),
+        "marker": active_marker,
+        "reasons": reasons,
+    }
 
 
 def mark_invalidated(*, cr_id: str, previous_status: str, previous_hash: str | None,

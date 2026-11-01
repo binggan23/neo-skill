@@ -28,6 +28,7 @@ from .commands import dev as dev_command
 from .commands import doctor as doctor_command
 from .commands import index_cmd as index_command
 from .commands import init as init_command
+from .commands import lint_cmd as lint_command
 from .commands import prd as prd_command
 from .commands import recover as recover_command
 from .commands import req as req_command
@@ -45,6 +46,7 @@ COMMAND_MODULES = (
     acceptance_command,
     index_command,
     recover_command,
+    lint_command,
 )
 
 PROG = "flow-core"

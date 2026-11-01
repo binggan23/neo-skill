@@ -171,6 +171,7 @@ def test_team_not_configured(project: Path):
 # ID / 目录 / 编号
 # --------------------------------------------------------------------------
 def test_id_mismatch(project: Path):
+    initialized(project)
     planned_req(project)
     patch_req(project, id="REQ-099")
     result = lint(project)
@@ -179,6 +180,7 @@ def test_id_mismatch(project: Path):
 
 
 def test_module_mismatch(project: Path):
+    initialized(project)
     h7.approved(project)
     source = prd_dir(project)
     target = project / "04-prds" / "moved-module" / source.name
@@ -190,6 +192,7 @@ def test_module_mismatch(project: Path):
 
 
 def test_duplicate_id(project: Path):
+    initialized(project)
     planned_req(project)
     original = req_path(project)
     copy = original.with_name("REQ-001-duplicate.md")
@@ -200,6 +203,7 @@ def test_duplicate_id(project: Path):
 
 
 def test_counter_regression(project: Path):
+    initialized(project)
     planned_req(project)
     write(project / ".neo-skill/counters.yaml",
           yaml.safe_dump({"REQ": 0, "PRD": 0, "CR": 0, "SC": 0, "ADR": 0, "DEC": 0}))
@@ -223,6 +227,7 @@ def test_orphan_spec_without_prd(project: Path):
 
 
 def test_broken_reference_from_prd_source_req(project: Path):
+    initialized(project)
     h7.approved(project)
     patch_prd_meta(project, source_reqs=["REQ-999"])
     result = lint(project)
@@ -231,6 +236,7 @@ def test_broken_reference_from_prd_source_req(project: Path):
 
 
 def test_broken_reference_from_req_prd(project: Path):
+    initialized(project)
     planned_req(project)
     patch_req(project, prd="PRD-999")
     result = lint(project)
@@ -242,6 +248,7 @@ def test_broken_reference_from_req_prd(project: Path):
 # 非法状态关系
 # --------------------------------------------------------------------------
 def test_invalid_state_req_done_without_accepted_prd(project: Path):
+    initialized(project)
     h7.ready(project)
     patch_req(project, status="DONE")
     result = lint(project)
@@ -253,6 +260,7 @@ def test_invalid_state_req_done_without_accepted_prd(project: Path):
 # 基线失效
 # --------------------------------------------------------------------------
 def test_hash_mismatch(project: Path):
+    initialized(project)
     h7.approved(project)
     body = prd_dir(project) / "prd.md"
     write(body, read(body) + "\n<!-- 绕过 CLI 直接改正文 -->\n")
@@ -262,6 +270,7 @@ def test_hash_mismatch(project: Path):
 
 
 def test_baseline_invalidated_by_open_cr(project: Path):
+    initialized(project)
     h7.approved(project)
     created = run_cli(project, "prd", "cr", "create", "--id", PRD_ID, "--actor", "alice",
                       "--confirm", "--reason", "客户要求增加 CSV 导出", env=ENV)
@@ -273,6 +282,7 @@ def test_baseline_invalidated_by_open_cr(project: Path):
 
 def test_baseline_invalidated_even_without_marker(project: Path):
     """§13 待办 3：有未决 CR 就算失效，不能只看 `baseline_invalidated.active`。"""
+    initialized(project)
     h7.approved(project)
     created = run_cli(project, "prd", "cr", "create", "--id", PRD_ID, "--actor", "alice",
                       "--confirm", "--reason", "客户要求增加 CSV 导出", env=ENV)
@@ -290,6 +300,7 @@ def test_baseline_invalidated_even_without_marker(project: Path):
 # 验证 / 验收失效
 # --------------------------------------------------------------------------
 def test_verification_missing_is_warning(project: Path):
+    initialized(project)
     h7.developing(project)
     result = lint(project)
     assert result.code == 0, result
@@ -299,6 +310,7 @@ def test_verification_missing_is_warning(project: Path):
 
 
 def test_verification_stale(project: Path):
+    initialized(project)
     h7.ready(project)
     log = h7.raw_logs(project)[0]
     write(log, read(log) + "\n<!-- 篡改证据 -->\n")
@@ -308,6 +320,7 @@ def test_verification_stale(project: Path):
 
 
 def test_acceptance_stale(project: Path):
+    initialized(project)
     h8.accepted(project)
     src = project / "src" / "app.py"
     write(src, "print('changed after acceptance')\n")
@@ -320,6 +333,7 @@ def test_acceptance_stale(project: Path):
 # 收尾
 # --------------------------------------------------------------------------
 def test_closeout_incomplete(project: Path):
+    initialized(project)
     h8.accepted(project)
     result = lint(project)
     assert result.code == 1, result
@@ -327,6 +341,7 @@ def test_closeout_incomplete(project: Path):
 
 
 def test_closeout_complete_clears_finding(project: Path):
+    initialized(project)
     h8.accepted(project)
     closed = h8.closeout(project)
     assert closed.code == 0, closed
@@ -390,6 +405,7 @@ def test_lint_rules_detects_missing_gates(project: Path):
 # `--only` 过滤
 # --------------------------------------------------------------------------
 def test_only_filters_codes(project: Path):
+    initialized(project)
     h8.accepted(project)
     everything = lint(project)
     assert len(codes(everything)) > 1, findings(everything)
@@ -406,6 +422,7 @@ def test_only_unknown_code_is_rejected(project: Path):
 
 
 def test_only_warning_code_exits_zero(project: Path):
+    initialized(project)
     h7.developing(project)
     result = lint(project, "--only", "VERIFICATION_MISSING")
     assert result.code == 0, result
@@ -416,6 +433,7 @@ def test_only_warning_code_exits_zero(project: Path):
 # 只读、稳定输出、人类输出
 # --------------------------------------------------------------------------
 def test_lint_is_read_only(project: Path):
+    initialized(project)
     h8.accepted(project)
     before = snapshot(project)
     result = lint(project, "--json")
@@ -424,6 +442,7 @@ def test_lint_is_read_only(project: Path):
 
 
 def test_lint_output_is_stable(project: Path):
+    initialized(project)
     h8.accepted(project)
     first = lint(project)
     second = lint(project)

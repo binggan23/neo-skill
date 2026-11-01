@@ -58,6 +58,8 @@ class Result:
     next_actions: list[str] = field(default_factory=list)
     checks: list[dict[str, Any]] = field(default_factory=list)
     data: dict[str, Any] = field(default_factory=dict)
+    # 人类可读短句（只进 render_human，不进 JSON 信封）；命令不要自己 print。
+    notes: list[str] = field(default_factory=list)
 
     @property
     def success(self) -> bool:
@@ -158,6 +160,8 @@ def render_human(result: Result) -> str:
             lines.append("  以下文件已存在且内容不同，未覆盖：")
             for artifact in planned:
                 lines.append(f"  - {artifact.path}")
+        for note in result.notes:
+            lines.append(f"  {note}")
         for check in result.checks:
             status = check.get("status", "")
             label = {"ok": "正常", "warn": "注意", "fail": "缺失"}.get(status, status)

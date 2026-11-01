@@ -89,6 +89,31 @@ def load_team(workspace: Workspace) -> Team | None:
                 extra={k: v for k, v in metadata.items() if k not in {"confirmed", "members"}})
 
 
+def require_team(workspace: Workspace, *, object: str | None = None,
+                 require_confirmed: bool = True) -> Team:
+    """人工决策前的团队配置校验：文件存在、有成员、（默认）已由项目负责人确认。
+
+    与 `require_member` 的区别：本函数负责「团队配置是否可用」这一层，
+    `require_member` 负责「这个 actor 能不能做这个决定」。两者都不改变状态。
+    """
+    team = load_team(workspace)
+    if team is None or not team.members:
+        raise FlowError(
+            "TEAM_NOT_CONFIGURED",
+            "项目还没有有效的团队配置（00-management/team.md 缺失或没有成员）",
+            object=object,
+            suggestion="先补齐 00-management/team.md 的成员与职责映射，再由项目负责人确认",
+        )
+    if require_confirmed and not team.confirmed:
+        raise FlowError(
+            "TEAM_NOT_CONFIGURED",
+            "团队配置尚未确认（00-management/team.md 的 confirmed 不是 true）",
+            object=object,
+            suggestion="由项目负责人核对成员与职责后把 confirmed 改为 true，再执行人工决策",
+        )
+    return team
+
+
 def require_confirmation(actor: str | None, confirm: bool, *, command: str) -> str:
     """人工决策命令统一前置校验：缺 `--actor` 或 `--confirm` → `CONFIRMATION_REQUIRED`。"""
     if not confirm or not actor:

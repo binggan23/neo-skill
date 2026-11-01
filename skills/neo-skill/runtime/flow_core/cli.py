@@ -25,6 +25,7 @@ from typing import Sequence
 from . import __version__
 from .commands import doctor as doctor_command
 from .commands import init as init_command
+from .commands import req as req_command
 from .output import EXIT_FAIL, EXIT_OK, EXIT_USAGE, FlowError, Result, render_human
 from .rules import load_rules
 from .workspace import Workspace, resolve_root
@@ -33,6 +34,7 @@ from .workspace import Workspace, resolve_root
 COMMAND_MODULES = (
     init_command,
     doctor_command,
+    req_command,
 )
 
 PROG = "flow-core"
@@ -66,6 +68,11 @@ def _global_options() -> argparse.ArgumentParser:
         help="显式确认（人工决策命令必需）",
     )
     return parser
+
+
+def global_options_parser() -> argparse.ArgumentParser:
+    """给需要自己的子命令解析器的命令组复用全局参数（只追加，不改已有逻辑）。"""
+    return _global_options()
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -53,7 +53,7 @@ npx skills@latest update
 | --- | --- | --- |
 | `init` | 初始化项目骨架、项目规则基线、模板；幂等，不覆盖已有内容 | 已可用 |
 | `doctor` | 检查 Python / Node / Skill 资源 / `flow-core` / 残留锁，给出修复建议 | 已可用 |
-| `req` | 需求草稿、grilling 共识确认、人工排期 | 计划中 |
+| `req` | 需求草稿、grilling 共识确认、人工排期 | 已可用 |
 | `prd` | PRD 草稿、自审、提交评审、批准与基线 hash、CR | 计划中 |
 | `dev` | 开发门禁、绑定 PRD、Spec/Plan/Tasks、验证与提交验收 | 计划中 |
 | `acceptance` | Demo/checklist、人工验收结论、收尾同步 | 计划中 |

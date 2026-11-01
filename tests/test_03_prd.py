@@ -255,7 +255,8 @@ def test_validate_reports_too_many_scenarios_in_body(inited_project: Path) -> No
 """
         for index in range(3, 11)
     )
-    update_body(inited_project, VALID_PRD + extra)
+    # 追加的场景必须落在「## 场景」小节内，否则会被算作其他小节的子标题
+    update_body(inited_project, VALID_PRD.replace("## 非功能需求", extra + "\n## 非功能需求"))
 
     result = run_cli(inited_project, "prd", "validate", "--id", "PRD-001")
 

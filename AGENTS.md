@@ -20,8 +20,23 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 `codegraph_files` / `codegraph_status`（目录、索引状态）。`codegraph_status` 的「Changes since index」非 0
 就先重建再信结论。`rg` / `read` 兜底：字面量常量、生成代码、迁移/配置、`*.md`、索引漏掉的符号。
 
-对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**。
-（外部资料回到一手来源，不停在二手转述。本仓库暂无 `.codegraph/` 索引时直接 `rg` / `read`，不为探索单独建索引。）
+**探索的第一动作是 `codegraph_status`，不是 `find` / `grep`。** 这一步不可省略：
+「本仓库还没有索引」这个判断只有它能给出，不查就自称没有索引等于跳过整条约定。四种结果四种处理：
+
+| `codegraph_status` 结果 | 处理 |
+| --- | --- |
+| 有索引，`Changes since index` 为 0 | 正常走上面的 CodeGraph 路径 |
+| 有索引，但变更数非 0 | 先 `codegraph index` / `codegraph sync`，再信结论 |
+| 明确报「未初始化 / not indexed」 | 跑 `codegraph init`（一次性；之后 daemon 自动 sync），再走 CodeGraph。**本仓库已决定启用**，不必每次再问 |
+| 工具本身不可用（报错 / MCP 未连） | 才降级 `rg` / `read`，**并在结论里贴出 status 的原始输出说明原因** |
+
+兜底不是默认路径：宣告走 `rg` / `read` 兜底时必须能贴出 `codegraph_status` 的原始输出，否则视为漏做前置动作。
+新克隆、新 worktree、新机器开局都没有 `.codegraph/`（数据库是本机产物，见 `.codegraph/.gitignore`），
+所以每个新环境都要重跑一次 `codegraph init`（实测毫秒级）——这是常态，不是例外。
+
+对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**；
+给子 agent 的 brief 里必须显式带上「先 `codegraph_status`，再探索」，否则子 agent 继承不到。
+（外部资料回到一手来源，不停在二手转述。）
 
 ### code-review 之后：派 `fix` 修
 

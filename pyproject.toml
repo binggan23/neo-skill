@@ -25,4 +25,8 @@ minversion = "8.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra --strict-markers"
+markers = [
+    # 夹具构建可能超过 2 分钟时用它标记（SRS-NFR-004 的规模夹具）；预算断言本身不放宽
+    "slow: 重量级夹具/基准用例（默认也运行；CI 可分片或加 -m 'not slow'）",
+]
 # 测试按文件分批跑（共享设计 §10）：不要用一条命令跑全套大 fixture。

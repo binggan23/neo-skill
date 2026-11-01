@@ -156,13 +156,14 @@ def test_bare_invocation_is_usage_error(project: Path) -> None:
     assert "init" in proc.stderr
 
 
-@pytest.mark.parametrize("group", ["acceptance", "lint", "index", "recover"])
+@pytest.mark.parametrize("group", ["lint", "index", "recover"])
 def test_future_command_groups_are_not_registered_as_empty_shells(
     project: Path, group: str
 ) -> None:
     """未实现的命令组不得注册：调用应是用法错误，而不是伪装成功。
 
-    `req`（ticket 02）、`prd`（ticket 03）、`dev`（ticket 05）实现后已从本参数化列表移除（命令组按 ticket 逐个上线）。
+    `req`（ticket 02）、`prd`（ticket 03）、`dev`（ticket 05）、`acceptance`（ticket 07）
+    实现后已从本参数化列表移除（命令组按 ticket 逐个上线）。
     """
     result = run_cli(project, group, "list")
 

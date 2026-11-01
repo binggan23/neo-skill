@@ -180,3 +180,19 @@ def test_lock_conflict_does_not_change_state(inited_project: Path) -> None:
     assert result.code == 1
     assert error_codes(result) == {"LOCK_CONFLICT"}
     assert read(prd_dir(inited_project) / "metadata.yaml") == before
+
+
+def test_create_lock_conflict_does_not_consume_prd_id(inited_project: Path) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    counters_before = yaml.safe_load(read(inited_project / ".neo-skill/counters.yaml"))
+    write(inited_project / ".neo-skill/locks/REQ-001.lock",
+          '{"object": "REQ-001", "pid": 999999, "created_at": "2026-03-01T09:00:00+08:00",'
+          ' "command": "req.plan", "rules_version": 1}')
+
+    result = run_cli(inited_project, "prd", "create", "--req", "REQ-001",
+                     "--scenarios", "SC-RES-01")
+
+    assert result.code == 1
+    assert error_codes(result) == {"LOCK_CONFLICT"}
+    assert yaml.safe_load(read(inited_project / ".neo-skill/counters.yaml")) == counters_before
+    assert not (inited_project / "04-prds/resume").exists()

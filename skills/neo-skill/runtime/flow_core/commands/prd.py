@@ -138,22 +138,23 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     related = _related_reqs(workspace, rules, args.related, primary=record.id)
 
     actor = _actor(args) or "flow-core"
-    prd_id = ids.allocate(workspace, "PRD", width=rules.id_width,
-                          prefix=rules.id_prefixes.get("prd", "PRD"))
-    directory = metadata.directory_path(workspace, module=module, prd_id=prd_id, slug=slug)
 
-    meta = metadata.initial_metadata(
-        prd_id=prd_id, slug=slug, title=record.title, module=module, feature=feature,
-        scenarios=scenarios, source_reqs=[record.id], related_reqs=related,
-        release=release, actor=actor, rules=rules,
-    )
-    _append_create_history(meta, actor=actor, rules=rules)
-    body = metadata.render_body(workspace, prd_id=prd_id, title=record.title, module=module,
-                                feature=feature, scenarios=scenarios,
-                                source_reqs=[record.id], release=release)
+    # 先锁主需求再分配编号：锁冲突不消耗 PRD 编号，也不动 req metadata。
+    with locks.object_lock(workspace, record.id, command="prd.create",
+                           rules_version=rules.version):
+        prd_id = ids.allocate(workspace, "PRD", width=rules.id_width,
+                              prefix=rules.id_prefixes.get("prd", "PRD"))
+        directory = metadata.directory_path(workspace, module=module, prd_id=prd_id, slug=slug)
 
-    with locks.object_locks(workspace, [prd_id, record.id], command="prd.create",
-                            rules_version=rules.version):
+        meta = metadata.initial_metadata(
+            prd_id=prd_id, slug=slug, title=record.title, module=module, feature=feature,
+            scenarios=scenarios, source_reqs=[record.id], related_reqs=related,
+            release=release, actor=actor, rules=rules,
+        )
+        _append_create_history(meta, actor=actor, rules=rules)
+        body = metadata.render_body(workspace, prd_id=prd_id, title=record.title,
+                                    module=module, feature=feature, scenarios=scenarios,
+                                    source_reqs=[record.id], release=release)
         (directory / metadata.REVIEWS_DIR).mkdir(parents=True, exist_ok=True)
         (directory / metadata.CHANGES_DIR).mkdir(parents=True, exist_ok=True)
         fsutil.atomic_write_text(directory / metadata.BODY_FILE, body)

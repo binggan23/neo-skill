@@ -44,8 +44,8 @@ tests/                                 flow-core CLI 黑盒测试
 
 | 命令组 | 状态 |
 | --- | --- |
-| `init`、`doctor`、`req`、`prd` | 已可用 |
-| `dev`、`acceptance`、`lint`、`index`、`recover` | 计划中（未注册，调用返回用法错误） |
+| `init`、`doctor`、`req`、`prd`、`dev`（门禁/启动/状态/范围检查） | 已可用 |
+| `acceptance`、`lint`、`index`、`recover` | 计划中（未注册，调用返回用法错误） |
 
 所有命令支持 `--root`、`--json`、`--actor`、`--confirm`；`--json` 统一返回
 `success` / `command` / `artifacts` / `errors` / `next_actions`。退出码 `0`/`1`/`2`。
@@ -57,6 +57,7 @@ python3 -m pytest tests/test_01_init.py      # 按文件分批跑，不要一次
 python3 -m pytest tests/test_02_requirements.py
 python3 -m pytest tests/test_03_prd.py
 python3 -m pytest tests/test_03_baseline.py
+python3 -m pytest tests/test_05_dev.py
 python3 -m compileall skills/neo-skill/runtime
 ```
 

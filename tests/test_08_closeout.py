@@ -300,6 +300,19 @@ def test_recover_unknown_tx(inited_project: Path):
 # --------------------------------------------------------------------------
 # closeout-status（ticket 09 lint 复用入口）
 # --------------------------------------------------------------------------
+def test_closeout_status_before_confirmation(inited_project: Path):
+    """未确认不是错误：closeout-status 只报告事实（confirmed=false），不改任何东西。"""
+    h7.ready(inited_project)
+    result = h8.closeout_status(inited_project)
+    assert result.ok, result
+    data = result.json["data"]
+    assert data["confirmed"] is False
+    assert data["closeout_state"] is None
+    assert data["closeout_ok"] is False
+    assert req_meta(inited_project)["status"] == "IN_PRD"
+    assert h8.transaction_ids(inited_project) == []
+
+
 def test_closeout_status_reports_progress(inited_project: Path):
     h8.accepted(inited_project)
 

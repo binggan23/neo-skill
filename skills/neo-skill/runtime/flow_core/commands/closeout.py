@@ -271,14 +271,14 @@ def _closeout_status(workspace: Workspace, rules: Rules, args: argparse.Namespac
                 suggestion="PRD/代码/证据/清单变化后旧结论不得沿用：重新 prepare 并逐条重新记录",
                 next_action=f"{FLOW_CORE} acceptance prepare --prd {record.id}",
             )
-        else:
-            result.fail(
-                "ACCEPTANCE_NOT_CONFIRMED",
-                f"{record.id} 尚未人工确认通过（当前状态 {record.status}），不能收尾",
-                object=record.id,
-                suggestion=CONFIRMED_HINT.format(prd=record.id),
-                next_action=f"{FLOW_CORE} acceptance status --prd {record.id}",
-            )
+            return result
+        # 未确认不是错误：这只是「还不能收尾」的状态事实，如实报告即可
+        result.notes.append(
+            f"{record.id} 尚未人工确认通过（当前状态 {record.status}），还不能收尾")
+        result.next_actions.extend([
+            f"{FLOW_CORE} acceptance status --prd {record.id}",
+            f"{FLOW_CORE} acceptance approve --prd {record.id} --actor {ACTOR_PLACEHOLDER} --confirm",
+        ])
         return result
 
     if data["closeout_state"] == "COMMITTED" and data["main_req_status"] == "DONE":

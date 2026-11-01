@@ -671,3 +671,95 @@ def test_missing_subcommand_is_usage_error(inited_project: Path) -> None:
     result = run_cli(inited_project, "prd")
 
     assert result.code == 2
+
+
+# ------------------------------------------------------------------ 骨架与边界
+def test_fresh_skeleton_fails_validation(inited_project: Path) -> None:
+    """新建骨架只有占位内容，校验必须报章节缺失（不能把模板占位当成已填写）。"""
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    create_prd(inited_project, scenarios="SC-RES-01")
+
+    result = run_cli(inited_project, "prd", "validate", "--id", "PRD-001")
+
+    assert result.code == 1
+    assert "MISSING_SECTION" in issue_codes(result, "error")
+    assert "MISSING_CURRENT_STATE" in issue_codes(result, "error")
+
+
+def test_create_rejects_requirement_already_in_prd(inited_project: Path) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    create_prd(inited_project, scenarios="SC-RES-01")
+
+    result = run_cli(inited_project, "prd", "create", "--req", "REQ-001")
+
+    assert result.code == 1
+    # 主需求已转 IN_PRD：require_planned 先报状态不满足（ticket 02 的判定顺序）
+    assert error_codes(result) <= {"REQ_NOT_PLANNED", "REQ_ALREADY_IN_PRD"}
+    assert error_codes(result)
+    assert prd_meta(inited_project)["status"] == "DRAFT"
+    assert len(list((inited_project / "04-prds").glob("resume/*"))) == 1
+
+
+def test_create_rejects_malformed_scenario_id(inited_project: Path) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+
+    result = run_cli(inited_project, "prd", "create", "--req", "REQ-001",
+                     "--scenarios", "batch-upload")
+
+    assert result.code == 1
+    assert error_codes(result) == {"INVALID_SCENARIO"}
+    assert not (inited_project / "04-prds/resume").exists()
+
+
+def test_create_rejects_unknown_related_requirement(inited_project: Path) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+
+    result = run_cli(inited_project, "prd", "create", "--req", "REQ-001",
+                     "--related", "REQ-404")
+
+    assert result.code == 1
+    assert error_codes(result) == {"REQ_NOT_FOUND"}
+    assert not (inited_project / "04-prds/resume").exists()
+
+
+def test_create_defaults_slug_module_and_release_from_requirement(
+    inited_project: Path,
+) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse", release="v0.2.0")
+
+    create_prd(inited_project, scenarios="SC-RES-01")
+
+    meta = prd_meta(inited_project)
+    assert meta["slug"] == "batch-parse"
+    assert meta["module"] == "resume"
+    assert meta["release"] == "v0.2.0"
+    assert meta["feature"] == "batch-parse"
+
+
+def test_changes_requested_can_be_edited_again(inited_project: Path) -> None:
+    """`CHANGES_REQUESTED` 允许继续改草稿（规则 prd.draft_states 驱动）。"""
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    create_prd(inited_project, scenarios="SC-RES-01")
+    update_body(inited_project, VALID_PRD)
+    run_cli(inited_project, "prd", "submit-review", "--id", "PRD-001", "--actor", "bob",
+            "--confirm", env=ENV)
+    path = prd_dir(inited_project) / "metadata.yaml"
+    meta = yaml.safe_load(read(path))
+    meta["status"] = "CHANGES_REQUESTED"
+    write(path, yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+
+    result = run_cli(inited_project, "prd", "update", "--id", "PRD-001", "--set",
+                     "feature=resume-parse", env=ENV)
+
+    assert result.code == 0, result
+    assert prd_meta(inited_project)["feature"] == "resume-parse"
+
+
+def test_validate_does_not_create_or_touch_reviews(inited_project: Path) -> None:
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    create_prd(inited_project, scenarios="SC-RES-01")
+
+    run_cli(inited_project, "prd", "validate", "--id", "PRD-001")
+
+    assert sorted((prd_dir(inited_project) / "reviews").glob("*")) == []
+    assert sorted((prd_dir(inited_project) / "changes").glob("*")) == []

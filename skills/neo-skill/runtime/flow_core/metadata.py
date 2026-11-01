@@ -588,10 +588,22 @@ def _section_body(sections: dict[str, str], aliases: Iterable[str]) -> str | Non
     return None
 
 
+PLACEHOLDER_TOKENS: tuple[str, ...] = ("<待填写", "<待补充", "TODO:", "PRD-XXX", "SC-XXX", "AC-XXX")
+
+
 def _meaningful(text: str | None) -> str:
+    """去掉注释与模板占位后仍剩下实质内容 → 视为该小节已填写。"""
     if text is None:
         return ""
-    return _strip_comments(text).strip()
+    stripped = _strip_comments(text).strip()
+    if not stripped:
+        return ""
+    if any(token in stripped for token in PLACEHOLDER_TOKENS):
+        # 只保留不含占位符的行，看看还有没有真实内容
+        keep = [line for line in stripped.splitlines()
+                if line.strip() and not any(token in line for token in PLACEHOLDER_TOKENS)]
+        return "\n".join(keep).strip()
+    return stripped
 
 
 def _check_sections(record: PrdRecord, sections: dict[str, str]) -> list[dict[str, Any]]:
@@ -615,8 +627,7 @@ def _check_current_state(workspace: Workspace, record: PrdRecord,
     meaningful = _meaningful(content)
     if meaningful:
         return []
-    declared = any(token in record.body for token in NEW_FEATURE_DECLARATIONS)
-    if declared:
+    if declares_new_feature(record.body):
         return []
     feature_doc = feature_doc_path(workspace, record.module, record.feature)
     hint = f"引用 {workspace.rel(feature_doc)}" if feature_doc.is_file() else "写明现状来源"
@@ -821,8 +832,7 @@ def _check_cross_documents(workspace: Workspace, record: PrdRecord) -> list[dict
 
     # 2) 已存在功能现状文档，却声明「新功能，无现状」
     feature_doc = feature_doc_path(workspace, record.module, record.feature)
-    declared_new = any(token in record.body for token in NEW_FEATURE_DECLARATIONS)
-    if declared_new and feature_doc.is_file():
+    if declares_new_feature(record.body) and feature_doc.is_file():
         issues.append(issue(
             "CROSS_DOC_CONFLICT",
             severity=SEVERITY_WARNING,
@@ -831,6 +841,17 @@ def _check_cross_documents(workspace: Workspace, record: PrdRecord) -> list[dict
             suggestion="把「## 现状与变化」改为引用现有功能现状文档并写清本次变化",
         ))
     return issues
+
+
+def declares_new_feature(body: str) -> bool:
+    """正文（去掉注释与模板占位）是否明确声明「新功能，无现状」（SRS-FR-044）。
+
+    只看正文实质内容：模板注释里也写着这句话，不能算声明。
+    """
+    text = _strip_comments(body)
+    if not any(token in text for token in NEW_FEATURE_DECLARATIONS):
+        return False
+    return bool(_meaningful(text))
 
 
 def feature_doc_path(workspace: Workspace, module: str, feature: str) -> Path:

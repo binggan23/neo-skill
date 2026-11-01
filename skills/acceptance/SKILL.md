@@ -154,24 +154,46 @@ flow-core acceptance conditional --prd PRD-001 --actor alice --confirm \
 - `--reason` 与至少一条 `--leftover` 必填（`REASON_REQUIRED` / `LEFTOVER_REQUIRED`）；
 - 之后 `approve` 一律返回 `ACCEPTANCE_CONDITIONAL`，直到遗留问题处理完、重新记录结论。
 
-## 阶段六：收尾同步（FR-075～077，后续 `acceptance closeout`）
+## 阶段六：收尾同步（FR-075～077）
 
-验收通过后的下一步是**收尾**，不是结束：
+验收通过后的下一步是**收尾**，不是结束。收尾是一个**可恢复的多文件事务**，
+一次同步四类事实（顺序固定）：
 
-1. 更新（首次验收的新功能则创建）功能现状 `02-definition/modules/<module>/features/<feature>.md`；
-2. 主需求 `IN_PRD → DONE`；
-3. 场景状态改为「已验收」；
-4. 重新生成索引（`backlog.md`、`feature-map.md`、`04-prds/index.md`）。
-
-全部成功才算完成；任一步失败必须保留「已确认通过，收尾未完成」，不得报全部完成。
-本阶段命令 `flow-core acceptance closeout` **在本版本尚未提供**（后续 ticket 实现）；
-现在只做只读核对：
+1. 功能现状 `02-definition/modules/<module>/features/<feature>.md`
+   —— 首次验收创建，已有则只在末尾追加「## 本次变化」，既有正文不动；
+2. 场景状态 `02-definition/modules/<module>/README.md` 的受管理区块
+   —— 本次场景置「已验收」（`待规划 → 已规划 → 开发中 → 已验收`）；
+3. 受管理索引（`backlog.md`、`feature-map.md`、`04-prds/index.md`，与 `index` 命令同一套约定）；
+4. **最后**才把主需求 `IN_PRD → DONE` —— 前面没全落地就不许标完成（FR-076）。
 
 ```bash
-flow-core acceptance status --prd PRD-001
+flow-core acceptance closeout --prd PRD-001 --actor alice
 ```
 
-`data.next_step == "closeout"` 且 `data.stale == false` 才允许进入收尾。
+- 前置：PRD 已 `ACCEPTED` 且 `acceptance.approved_at` 存在，否则 `ACCEPTANCE_NOT_CONFIRMED`；
+  验收结论失效时 `ACCEPTANCE_STALE`。
+- 收尾是机械同步，`--confirm` **只在**受管理区块被人工改过（`MANAGED_BLOCK_MODIFIED`）时才需要；
+  那时必须同时给 `--actor`。
+- 成功：PRD 保持 `ACCEPTED`、主需求 `DONE`、metadata 写
+  `closeout: {state: COMMITTED, tx, at, by}`，事务目录保留作审计。
+- 失败：`success=false` + `CLOSEOUT_INCOMPLETE`，报「**已确认通过，收尾未完成**」，
+  metadata 写 `closeout: {state: PREPARED|FAILED, tx, error, pending[]}`；人工验收结论不动。
+  恢复路径：`acceptance closeout --prd P --retry --actor A` 或
+  `recover run --tx TX-... --actor A --confirm`。
+
+只读核对进度（ticket 09 的 lint 也读同一份判定）：
+
+```bash
+flow-core acceptance closeout-status --prd PRD-001
+```
+
+`data`：`confirmed`、`closeout_state`、`tx`、`pending_ops`、`main_req_status`、`scenarios`、
+`index_ok`、`index_problems`、`resumable`、`closeout_ok`、`problems`。
+
+> **恢复不会静默覆盖。** `recover run` 会先比对每个目标文件与事务记录的基线；
+> 有人改过（`BASELINE_CONFLICT`）就停下给建议，绝不覆盖别人的新修改。
+> 残留锁只由 `recover release-lock --object OBJ --actor A --confirm` 在**进程已结束**时清理；
+> 进程还活着 → `LOCK_HELD`，不删。
 
 ## 结论失效（BR-016）
 
@@ -207,6 +229,8 @@ flow-core acceptance status --prd PRD-001
 | `acceptance reject --prd P --actor A --confirm --reason R [--leftover L]` | 验收不通过 | 同上 / `→ DEVELOPING` |
 | `acceptance conditional --prd P --actor A --confirm --reason R --leftover L` | 有条件通过 | 同上 / **状态不变** |
 | `acceptance status --prd P` | 逐条状态、是否全部通过、结论是否失效 | 否 / 否 |
+| `acceptance closeout --prd P [--actor A] [--confirm] [--retry]` | 收尾：功能现状/场景/索引 → 主需求 DONE | 功能现状、README、三个索引、REQ/PRD metadata / `IN_PRD → DONE` |
+| `acceptance closeout-status --prd P` | 收尾进度（确认/事务/待办/主需求/索引） | 否 / 否 |
 
 ## 错误码速查
 
@@ -228,6 +252,10 @@ flow-core acceptance status --prd PRD-001
 | `AC_NOT_ALL_PASSED` | 逐条补齐；有 fail/blocked 就走 `reject` 或 `conditional` |
 | `ACCEPTANCE_CONDITIONAL` | 遗留问题未处理：重新记录结论后再请求确认 |
 | `BASELINE_STALE` / `ACCEPTANCE_STALE` | 重新验证并再次提交验收 / 重新 prepare 并逐条重记 |
+| `ACCEPTANCE_NOT_CONFIRMED` | 还没人工确认通过：先 `acceptance approve`，不要跳步收尾 |
+| `CLOSEOUT_INCOMPLETE` | 收尾部分失败：人工结论已保留，主需求**未** DONE；用 `--retry` 或 `recover run` |
+| `MANAGED_BLOCK_MODIFIED` | 受管理区块被人工改过：确认可覆盖后加 `--confirm --actor` |
+| `BASELINE_CONFLICT` | 恢复时目标文件已被改动：**不覆盖**，按建议重新收尾或还原基线 |
 
 ## 边界提醒
 

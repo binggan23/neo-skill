@@ -71,7 +71,7 @@ def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
 def _closeout(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     record = metadata.load(workspace, _require_prd(args), rules=rules)
     actor = _resolve_actor(workspace, args, record.id)
-    confirmed = _require_confirmed(workspace, rules, record)
+    _require_confirmed(workspace, rules, record)
 
     if _is_finished(record):
         return _already_done(workspace, rules, record, actor)
@@ -95,7 +95,7 @@ def _closeout(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> R
     if not pending and plan.main_req_status == "DONE":
         # 已经一致：只补 closeout 记录（幂等）
         entry = _write_closeout(workspace, record, actor, tx=None, state=transactions.STATE_COMMITTED)
-        return _success(workspace, rules, record, entry, artifacts=[], notes=[
+        return _success(workspace, rules, record, entry, notes=[
             f"{record.id} 的收尾目标已经全部一致，未新建事务"])
 
     result = Result(command="acceptance.closeout")
@@ -116,8 +116,7 @@ def _closeout(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> R
     for op in tx.ops:
         result.add(op.path, _kind_of(op.path), "created" if op.action == "create" else "updated")
     result.add(f"{record.rel}/{metadata.METADATA_FILE}", "prd", "updated")
-    filled = _success(workspace, rules, record, entry, result=result, confirmed=confirmed)
-    return filled
+    return _success(workspace, rules, record, entry, result=result)
 
 
 def _retry(workspace: Workspace, rules: Rules, record: metadata.PrdRecord, actor: str,
@@ -151,9 +150,8 @@ def _retry(workspace: Workspace, rules: Rules, record: metadata.PrdRecord, actor
     for op in tx.ops:
         result.add(op.path, _kind_of(op.path), "updated")
     result.add(f"{record.rel}/{metadata.METADATA_FILE}", "prd", "updated")
-    filled = _success(workspace, rules, record, entry, result=result,
-                      notes=[f"已续跑事务 {tx.id}"])
-    return filled
+    return _success(workspace, rules, record, entry, result=result,
+                    notes=[f"已续跑事务 {tx.id}"])
 
 
 def _incomplete(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
@@ -172,8 +170,6 @@ def _incomplete(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
         "main_req": (record.source_reqs or [None])[0],
     }
     record.meta["closeout"] = entry
-    acceptance_data = record.meta.get("acceptance") or {}
-    record.meta["acceptance"] = acceptance_data
     metadata.save(workspace, record)
 
     result = Result(command="acceptance.closeout")
@@ -203,8 +199,7 @@ def _incomplete(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
 def _already_done(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
                   actor: str) -> Result:
     entry = record.meta.get("closeout") or {}
-    result = Result(command="acceptance.closeout")
-    filled = _success(workspace, rules, record, dict(entry), result=result,
+    filled = _success(workspace, rules, record, dict(entry),
                       notes=[f"{record.id} 已在 {entry.get('at')} 完成收尾（{entry.get('by')}），"
                              "本次无变化"])
     filled.data["already_done"] = True
@@ -213,11 +208,8 @@ def _already_done(workspace: Workspace, rules: Rules, record: metadata.PrdRecord
 
 def _success(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
              entry: dict[str, Any], *, result: Result | None = None,
-             artifacts: list[str] | None = None, notes: list[str] | None = None,
-             confirmed: bool = True) -> Result:
+             notes: list[str] | None = None) -> Result:
     result = result or Result(command="acceptance.closeout")
-    for path in artifacts or []:
-        result.add(path, _kind_of(path), "created")
     data = result.data
     data["prd"] = record.to_dict()
     data["closeout"] = entry

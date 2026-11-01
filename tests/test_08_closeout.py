@@ -406,6 +406,31 @@ def test_index_failure_does_not_change_business_state(inited_project: Path):
     assert req_meta(inited_project)["status"] == "IN_PRD"
 
 
+def test_closeout_confirm_overrides_modified_block(inited_project: Path):
+    h8.accepted(inited_project)
+    assert h8.index(inited_project).ok
+    path = inited_project / "04-prds/index.md"
+    write(path, read(path).replace("| PRD-001 |", "| PRD-001（人工改动） |"))
+
+    result = h8.closeout(inited_project, extra=("--actor", "alice", "--confirm"))
+    assert result.ok, result
+    assert "人工改动" not in (h8.managed_body(read(path)) or "")
+    assert req_meta(inited_project)["status"] == "DONE"
+
+
+def test_closeout_retry_completes_interrupted_closeout(inited_project: Path):
+    h8.accepted(inited_project)
+    failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,
+                        env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "6"})
+    tx_id = failed.json["data"]["tx"]
+
+    result = h8.closeout(inited_project, extra=("--actor", "alice", "--retry"))
+    assert result.ok, result
+    assert h8.tx_yaml(inited_project, tx_id)["state"] == "COMMITTED"
+    assert req_meta(inited_project)["status"] == "DONE"
+    assert prd_meta(inited_project)["closeout"]["state"] == "COMMITTED"
+
+
 def test_closeout_refuses_modified_index_block(inited_project: Path):
     h8.accepted(inited_project)
     assert h8.index(inited_project).ok

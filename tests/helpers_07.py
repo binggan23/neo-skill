@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import yaml
@@ -48,9 +47,14 @@ PASS_CMD = 'python3 -c "print(1)"'
 
 
 def run(project: Path, *args: str, expect: int = 0, env: dict | None = None):
-    result = run_cli(project, *args, env=env if env is not None else ENV)
+    result = call(project, *args, env=env)
     assert result.code == expect, result
     return result
+
+
+def call(project: Path, *args: str, env: dict | None = None):
+    """不校验退出码的调用（用于「缺参数」这类必须看原始信封的用例）。"""
+    return run_cli(project, *args, env=env if env is not None else ENV)
 
 
 def acceptance_dir(project: Path, prd_id: str = PRD_ID) -> Path:
@@ -79,12 +83,6 @@ def demo_md(project: Path, prd_id: str = PRD_ID) -> str:
 
 def report_md(project: Path, prd_id: str = PRD_ID) -> str:
     return read(acceptance_dir(project, prd_id) / "report.md")
-
-
-def ver_json(project: Path, prd_id: str = PRD_ID) -> dict:
-    path = project / "06-specs" / MODULE / f"{prd_id}-{SLUG}" / "verification.json"
-    assert path.is_file(), f"缺少 {path}"
-    return json.loads(read(path))
 
 
 def raw_logs(project: Path, prd_id: str = PRD_ID) -> list[Path]:

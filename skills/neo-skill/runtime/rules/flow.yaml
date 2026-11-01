@@ -32,6 +32,12 @@ roles:
 req:
   initial: NEW
   states: [NEW, TRIAGED, PLANNED, IN_PRD, DONE, DEFERRED, REJECTED]
+  # 草稿期：内容与字段可改（req update / align / classify / set-priority）
+  draft_states: [NEW, TRIAGED]
+  # 内容已冻结：改正文/字段必须走 req unplan 或 PRD 变更（CR）
+  content_locked: [PLANNED, IN_PRD, DONE, DEFERRED, REJECTED]
+  # 已交给 PRD 的状态：不能再无记录地改期/取消排期（SRS-FR-035）
+  prd_states: [IN_PRD, DONE]
   transitions:
     NEW: [TRIAGED, DEFERRED, REJECTED]
     TRIAGED: [PLANNED, DEFERRED, REJECTED]
@@ -69,6 +75,8 @@ gates:
   req.confirm: {role: stakeholder, from: NEW, to: TRIAGED}
   req.plan: {role: requirement_owner, from: TRIAGED, to: PLANNED}
   req.unplan: {role: requirement_owner, from: PLANNED, to: TRIAGED}
+  req.defer: {role: requirement_owner, to: DEFERRED}
+  req.reject: {role: requirement_owner, to: REJECTED}
   prd.submit-review: {role: stakeholder, from: DRAFT, to: IN_REVIEW}
   prd.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
   prd.request-changes: {role: requirement_owner, from: IN_REVIEW, to: CHANGES_REQUESTED}

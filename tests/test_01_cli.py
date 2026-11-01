@@ -156,11 +156,14 @@ def test_bare_invocation_is_usage_error(project: Path) -> None:
     assert "init" in proc.stderr
 
 
-@pytest.mark.parametrize("group", ["req", "prd", "dev", "acceptance", "lint", "index", "recover"])
+@pytest.mark.parametrize("group", ["prd", "dev", "acceptance", "lint", "index", "recover"])
 def test_future_command_groups_are_not_registered_as_empty_shells(
     project: Path, group: str
 ) -> None:
-    """未实现的命令组不得注册：调用应是用法错误，而不是伪装成功。"""
+    """未实现的命令组不得注册：调用应是用法错误，而不是伪装成功。
+
+    `req` 在 ticket 02 实现后已从本参数化列表移除（命令组按 ticket 逐个上线）。
+    """
     result = run_cli(project, group, "list")
 
     assert result.code == 2

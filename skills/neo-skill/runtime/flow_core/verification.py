@@ -158,6 +158,8 @@ class VerificationStatus:
     repair_rounds: int = 0
     repair_limit: int = DEFAULT_REPAIR_ROUNDS
     submission: dict[str, Any] | None = None
+    # 已提交过、但提交时的代码版本/PRD hash/证据摘要与当前不一致（信息性，供 ticket 07 判定）
+    submission_outdated: bool = False
 
     @property
     def pending(self) -> list[dict[str, Any]]:
@@ -180,6 +182,7 @@ class VerificationStatus:
             "repair_rounds": self.repair_rounds,
             "repair_limit": self.repair_limit,
             "submission": self.submission,
+            "submission_outdated": self.submission_outdated,
         }
 
 
@@ -701,6 +704,13 @@ def evaluate(workspace: Workspace, rules: Rules, record: metadata.PrdRecord) -> 
                 break
     status.stale_reasons = reasons
     status.stale = bool(reasons and (status.submitted or status.runs))
+    submission = data.get("submission") or {}
+    if submission:
+        status.submission_outdated = bool(
+            submission.get("prd_hash") != record.compute_content_hash()
+            or submission.get("code_version") != status.code_version
+            or submission.get("verification_digest") != status.verification_digest
+        )
     return status
 
 

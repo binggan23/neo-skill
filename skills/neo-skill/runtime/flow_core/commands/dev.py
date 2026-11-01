@@ -860,20 +860,18 @@ def _resolve_acs(args: argparse.Namespace, record: metadata.PrdRecord) -> list[s
 
 
 def _raw_text(command: str, exit_code: int | None, stdout: str, stderr: str) -> str:
-    """原始输出文件内容：命令原样 + 未改写的 stdout/stderr + 退出码（NFR-008）。"""
-    parts = [
-        f"$ {command}",
-        "",
-        "--- stdout ---",
-        stdout.rstrip("\n"),
-        "",
-        "--- stderr ---",
-        stderr.rstrip("\n"),
-        "",
-        f"--- exit code: {exit_code if exit_code is not None else 'timeout'} ---",
-        "",
-    ]
-    return "\n".join(parts)
+    """原始输出文件内容（NFR-008）。
+
+    stdout / stderr **逐字节原样**保留（不做削尾、不做替换），只在前后加可读标注，
+    便于人工验收核对。退出码同时写进文件与 `verification.json` 的 `runs[]`。
+    """
+    label_exit = exit_code if exit_code is not None else "timeout"
+    return (
+        f"$ {command}\n"
+        f"--- stdout ---\n{stdout}"
+        f"--- stderr ---\n{stderr}"
+        f"--- exit code: {label_exit} ---\n"
+    )
 
 
 def _clean(value: Any) -> str | None:

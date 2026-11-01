@@ -602,6 +602,10 @@ def test_verification_status_before_any_evidence(developing: Path) -> None:
     assert {item["ac"] for item in result.json["data"]["acs"]} == set(ALL_ACS)
     assert all(item["result"] == "not-run" for item in result.json["data"]["acs"])
     assert any("dev verify" in item for item in result.json["next_actions"])
+    # 只读命令：不得创建任何验证产物
+    assert not (spec_dir(developing) / "verification.json").exists()
+    assert not (spec_dir(developing) / "verification.md").exists()
+    assert not ver_dir(developing).exists()
 
 
 def test_verification_status_after_submit_is_clean(developing: Path) -> None:

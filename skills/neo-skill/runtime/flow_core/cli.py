@@ -23,6 +23,7 @@ import traceback
 from typing import Sequence
 
 from . import __version__
+from .commands import dev as dev_command
 from .commands import doctor as doctor_command
 from .commands import init as init_command
 from .commands import prd as prd_command
@@ -37,6 +38,7 @@ COMMAND_MODULES = (
     doctor_command,
     req_command,
     prd_command,
+    dev_command,
 )
 
 PROG = "flow-core"

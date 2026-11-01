@@ -99,6 +99,17 @@ directories:
   prunable: [discovery, design, growth, releases, meetings, reports]
   not_prunable: [03-requirements, 04-prds, 07-acceptance, .specify, .neo-skill]
 
+# 开发门禁（dev gate / dev start / dev scope-check）
+dev:
+  # 允许启动开发的 PRD 状态：APPROVED 首次启动、DEVELOPING 幂等重启（ticket 05）
+  start_states: [APPROVED, DEVELOPING]
+  # 开发阶段允许写入的路径前缀（相对项目根）；越界即 SCOPE_EXCEEDED（BR-012/BR-013）
+  allowed_paths: [src, tests, 06-specs]
+  # 门禁通过后生成的开发产物（06-specs/<module>/PRD-NNN-<slug>/ 下）
+  spec_files: [spec.md, plan.md, tasks.md]
+  # 主需求必须处于的状态才能作为 PRD 的开发依据（读 req.prd_states 为默认）
+  require_req_states: [IN_PRD, DONE]
+
 # 受管理区块的目标文件（flow-core index 独占生成）
 managed_blocks:
   - 03-requirements/backlog.md

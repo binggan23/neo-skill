@@ -115,5 +115,14 @@ Agent 必须先把决定和影响讲清楚，再询问用户是否确认；不�
 
 ## 阶段细节
 
-各阶段的操作步骤、检查清单与话术由对应的阶段 Skill 提供：`project`、`requirements`、`prd`、`dev`、`acceptance`。
-本文件只做总览与命令索引，不重复阶段细节。
+各阶段的操作步骤、检查清单与话术由对应的阶段 Skill 提供（共五个，均已随包分发）：
+
+| 阶段 | Skill | 负责 |
+| --- | --- | --- |
+| 项目 | `project` | `doctor` 环境诊断、`init` 初始化、团队与 `constitution.md` 确认、`--prune` 裁剪、冲突处理、幂等复跑 |
+| 需求 | `requirements` | 草稿、grilling、共识确认、人工排期 |
+| PRD | `prd` | 草稿、自审、提交评审、人工批准、基线 hash 与变更请求（CR） |
+| 开发 | `dev` | 开发门禁、Spec/Plan/Tasks、验证证据、提交人工验收 |
+| 验收 | `acceptance` | Demo/checklist、逐条 AC 结论、验收通过/不通过、收尾 |
+
+本文件只做总览与命令索引，不重复阶段细节。新项目从 `project` 开始：先 `doctor`，再 `init`。

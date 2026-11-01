@@ -15,6 +15,14 @@ npx skills@latest add binggan23/neo-skill -a claude
 
 升级只使用 `npx skills@latest update`。
 
+> **已知阻塞**：远端默认分支 `main` 目前没有 `skills/` 目录（skill 只在 `feat/neo-skill-p0` 上），
+> 所以上面的 `npx add` 现在会返回 `No skills found`。合并到 `main` 并推送后即生效。
+> 在合并之前，用 `scripts/install-sim.sh` 本地模拟同一套复制语义做验收；
+> 完整实测与边界见 `docs/pilot-report.md`。
+
+包内包含 6 个 Skill：路由层 `neo-skill` 与 5 个阶段 Skill
+`project`（初始化/诊断）、`requirements`（需求与排期）、`prd`、`dev`、`acceptance`。
+
 ## 快速开始
 
 ```bash
@@ -35,7 +43,15 @@ skills/neo-skill/runtime/flow-core     可执行入口
 skills/neo-skill/runtime/flow_core/    Python 包（cli、output、workspace、fsutil、rules、…）
 skills/neo-skill/runtime/rules/flow.yaml   声明式规则（状态机、编号、裁剪、门禁）单一事实来源
 skills/neo-skill/runtime/templates/    文档模板
+skills/project/SKILL.md                阶段 Skill：doctor / init / team / constitution
+skills/requirements/SKILL.md           阶段 Skill：需求、grilling、人工排期
+skills/prd/SKILL.md                    阶段 Skill：PRD、评审、批准、CR
+skills/dev/SKILL.md                    阶段 Skill：开发门禁、Spec/Plan/Tasks、验证
+skills/acceptance/SKILL.md             阶段 Skill：Demo、逐条 AC、验收、收尾
 tests/                                 flow-core CLI 黑盒测试
+scripts/build-dist.sh                  打包 zip + tar.gz + sha256（可重现）
+scripts/install-sim.sh                 模拟 skills.sh 安装到 .claude/skills/
+scripts/pilot.sh                       隔离端到端试点
 ```
 
 安装后 `runtime/` 随 skill 目录一起复制，运行时只用相对路径解析，不依赖源码仓库位置。
@@ -80,6 +96,9 @@ python3 -m pytest tests/test_09_request_changes.py
 python3 -m pytest tests/test_09_ci.py
 python3 -m pytest tests/test_09_security.py
 python3 -m pytest tests/test_09_perf.py       # 1000 需求/200 PRD 规模基准
+python3 -m pytest tests/test_10_dist.py       # 打包与可重现构建
+python3 -m pytest tests/test_10_install.py    # 安装模拟与相对路径解析
+python3 -m pytest tests/test_10_pilot.py      # 隔离端到端试点（含 Claude Code 真调用）
 python3 -m compileall skills/neo-skill/runtime
 ```
 
@@ -89,5 +108,6 @@ python3 -m compileall skills/neo-skill/runtime
 
 - `docs/srs.md`：软件需求规格（业务规则权威来源）
 - `docs/hld.md`：高层设计（架构结论）
+- `docs/pilot-report.md`：P0 端到端试点报告（实测证据、未承诺边界、远端阻塞）
 - `GLOSSARY.md`：领域词汇
 - `AI产品研发流程与Skill体系.md`：目录、编号与模板原始方案

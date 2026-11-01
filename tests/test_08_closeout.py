@@ -260,6 +260,24 @@ def test_recover_run_from_committing_state(inited_project: Path):
         h8.index_text(inited_project, "04-prds/index.md")) or "")
 
 
+def test_recover_run_from_prepared_state(inited_project: Path):
+    """进程在 PREPARED（还没写任何目标）处被杀：recover 从头按 order 落地。"""
+    h8.accepted(inited_project)
+    failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,
+                        env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "1"})
+    tx_id = failed.json["data"]["tx"]
+    # 第 1 步就失败 → 没有任何目标落地；把状态改回 PREPARED 模拟进程刚建完事务就被杀
+    h8.set_tx_state(inited_project, tx_id, "PREPARED")
+    assert not h8.feature_doc(inited_project).exists()
+
+    result = h8.recover(inited_project, "run", "--tx", tx_id, "--actor", "alice",
+                        "--confirm")
+    assert result.ok, result
+    assert h8.tx_yaml(inited_project, tx_id)["state"] == "COMMITTED"
+    assert h8.feature_doc(inited_project).is_file()
+    assert req_meta(inited_project)["status"] == "DONE"
+
+
 def test_recover_run_without_tx_recovers_all_unfinished(inited_project: Path):
     h8.accepted(inited_project)
     failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,

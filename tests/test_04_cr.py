@@ -337,6 +337,16 @@ def test_cr_create_rejects_unknown_impact_key(approved: Path) -> None:
     assert cr_files(approved) == []
 
 
+def test_cr_create_rejects_invalid_impact_version(approved: Path) -> None:
+    before = read(meta_path(approved))
+
+    result = cr_create(approved, "--impact", "version=0.2", expect=1)
+
+    assert error_codes(result) == {"INVALID_RELEASE"}
+    assert read(meta_path(approved)) == before
+    assert cr_files(approved) == []
+
+
 def test_cr_create_uses_body_file(approved: Path) -> None:
     body = "# 变更内容\n\n新增「导出 CSV」场景，场景数保持 2 个。\n"
     write(approved / "cr-body.md", body)

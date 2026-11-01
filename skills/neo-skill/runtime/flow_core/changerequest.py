@@ -99,7 +99,10 @@ def parse_impact(raw: Iterable[str] | str | None) -> dict[str, Any]:
                     suggestion="可写的影响面：" + "、".join(IMPACT_KEYS),
                 )
             if key == "version":
-                impact["version"] = value or None
+                # 目标版本必须是合法的 vMAJOR.MINOR.PATCH（复用 metadata 的校验，不另写规则）
+                from .metadata import validate_release
+
+                impact["version"] = validate_release(value) if value else None
             else:
                 impact[key] = _as_bool(value, key)
     return impact

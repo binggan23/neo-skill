@@ -29,6 +29,7 @@ def metadata(project: Path) -> dict:
 
 def in_review(project: Path) -> Path:
     """DRAFT → 提交评审（`IN_REVIEW`），团队与 constitution 已就位。"""
+    assert run_cli(project, "init").code == 0
     planned_req(project, title="简历批量解析", slug="batch-parse")
     create_prd(project, scenarios="SC-RES-01,SC-RES-02")
     update_body(project, h7.VALID_PRD)

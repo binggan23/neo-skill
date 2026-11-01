@@ -91,6 +91,13 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     reject.add_argument("--id", required=True)
     reject.add_argument("--reason", default=None, help="拒绝理由（必填）")
 
+    # ticket 09：评审打回（共同设计 §13 待办 1）。规则 `gates.prd.request-changes` 早已就位。
+    request_changes = subparsers.add_parser(
+        "request-changes", parents=parents,
+        help="评审打回（IN_REVIEW → CHANGES_REQUESTED，需求负责人）")
+    request_changes.add_argument("--id", required=True)
+    request_changes.add_argument("--reason", default=None, help="修改意见（必填，写进 history）")
+
     verify = subparsers.add_parser("verify-hash", parents=parents,
                                    help="校验 content_hash 是否与当前内容一致")
     verify.add_argument("--id", required=True)
@@ -600,6 +607,64 @@ def _reject(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
 # --------------------------------------------------------------------------
 # 基线校验
 # --------------------------------------------------------------------------
+def _request_changes(workspace: Workspace, rules: Rules,
+                     args: argparse.Namespace) -> Result:
+    """评审打回（共同设计 §13 待办 1）：`IN_REVIEW → CHANGES_REQUESTED`。
+
+    顺序照共享设计 §2.3：解析对象 → `CONFIRMATION_REQUIRED` → 团队/身份/职责 →
+    状态跳转 → 取锁 → 追加 history/confirmations → 原子写 → 释放锁。
+    打回**不改** `content_hash`/`approved_by`：它只是评审结论，不是基线变更
+    （改正文仍要遵守草稿期规则，已批准 PRD 仍须走 CR）。
+    """
+    record = metadata.load(workspace, args.id, rules=rules)
+    command = "prd.request-changes"
+    actor = state.require_confirmation(_actor(args), _confirm(args), command=command)
+    gate = _gate(rules, command)
+    team = state.require_team(workspace, object=record.id)
+    state.require_member(team, actor, role=str(gate["role"]), object=record.id)
+    reason = str(args.reason or "").strip()
+    if not reason:
+        raise FlowError(
+            "REASON_REQUIRED",
+            "评审打回必须写明修改意见（--reason）",
+            object=record.id,
+            suggestion='例如 --reason "场景 SC-RES-02 的验收标准不可测量，请改成可观察的阈值"',
+        )
+    from_state = record.status
+    to_state = str(gate.get("to") or "CHANGES_REQUESTED")
+    _require_no_open_cr(workspace, record, rules)
+    state.check_transition(rules, "prd", from_state, to_state, object=record.id)
+
+    with locks.object_lock(workspace, record.id, command=command,
+                           rules_version=rules.version):
+        state.apply_transition(record.meta, machine="prd", to_state=to_state, actor=actor,
+                               action=command, rules=rules)
+        _annotate_last_history(record.meta, reason, key="reason")
+        _append_decision(record.meta, actor=actor, role=str(gate["role"]),
+                         decision=command, object_id=record.id, note=reason)
+        record.meta["status_reason"] = reason
+        metadata.save(workspace, record)
+
+    result = Result(command=command)
+    result.add(record.rel + "/" + metadata.METADATA_FILE, "prd", "updated")
+    result.data["prd"] = record.to_dict()
+    result.data["from"] = from_state
+    result.data["to"] = to_state
+    result.data["reason"] = reason
+    result.notes.append(f"{record.id} 已打回修改（{actor}），意见：{reason}")
+    result.notes.append("修改意见已写进 history 与 confirmations；改完需重新提交评审")
+    result.next_actions.append(
+        f"{FLOW_CORE} prd update --id {record.id} --body-file <修改后的正文>"
+    )
+    result.next_actions.append(
+        f"{FLOW_CORE} prd submit-review --id {record.id} --actor <提交人> --confirm"
+    )
+    return result
+
+
+# --------------------------------------------------------------------------
+# 基线校验
+# --------------------------------------------------------------------------
 def _baseline_status(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     """薄壳：实现与门禁共用 `flow_core/baseline.py` 的 `evaluate()`。"""
     from . import prd_change as change_command
@@ -829,6 +894,7 @@ _HANDLERS = {
     "submit-review": _submit_review,
     "approve": _approve,
     "reject": _reject,
+    "request-changes": _request_changes,
     "verify-hash": _verify_hash,
     "baseline-status": _baseline_status,
 }

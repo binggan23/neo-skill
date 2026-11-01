@@ -56,12 +56,20 @@ npx skills@latest update
 | `req` | 需求草稿、grilling 共识确认、人工排期 | 已可用 |
 | `prd` | PRD 草稿、结构自审、提交评审、人工批准、基线 hash 与变更请求（CR） | 已可用 |
 | `dev` | 开发门禁、绑定 PRD、Spec/Plan/Tasks、状态与范围检查、验证证据与提交人工验收 | 已可用 |
-| `acceptance` | Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过 | 已可用（收尾同步 `closeout` 计划中） |
+| `acceptance` | Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过、收尾同步 `closeout` | 已可用 |
+| `index` | 生成受管理索引区块（backlog / feature-map / PRD 索引），区块外内容保留 | 已可用 |
+| `recover` | 中断事务的基线校验恢复、残留锁的显式清理 | 已可用 |
 | `lint` | 结构、引用、hash、基线与收尾一致性检查 | 计划中 |
-| `index` | 生成受管理索引区块（backlog / feature-map / PRD 索引） | 计划中 |
-| `recover` | 残留锁与中断事务的显式恢复 | 计划中 |
 
 「计划中」的命令当前不注册：调用会返回用法错误，而不是伪装成功。
+
+残留锁与中断事务的恢复：
+
+```bash
+flow-core recover list                                  # 看有哪些未完成事务
+flow-core recover run --tx TX-... --actor alice --confirm  # 校验基线后续跑（冲突则拒绝）
+flow-core recover --release-lock PRD-001 --actor alice --confirm   # 只在进程已结束时清锁
+```
 
 ### 常用起步
 

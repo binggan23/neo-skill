@@ -26,8 +26,10 @@ from . import __version__
 from .commands import acceptance as acceptance_command
 from .commands import dev as dev_command
 from .commands import doctor as doctor_command
+from .commands import index_cmd as index_command
 from .commands import init as init_command
 from .commands import prd as prd_command
+from .commands import recover as recover_command
 from .commands import req as req_command
 from .output import EXIT_FAIL, EXIT_OK, EXIT_USAGE, FlowError, Result, render_human
 from .rules import load_rules
@@ -41,6 +43,8 @@ COMMAND_MODULES = (
     prd_command,
     dev_command,
     acceptance_command,
+    index_command,
+    recover_command,
 )
 
 PROG = "flow-core"

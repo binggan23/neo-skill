@@ -305,6 +305,20 @@ def test_start_rejects_actor_without_developer_role(approved: Path) -> None:
     assert prd_meta(approved)["status"] == "APPROVED"
 
 
+def test_start_respects_object_lock(approved: Path) -> None:
+    """门禁通过但 PRD 被其他流程锁住 → LOCK_CONFLICT，且不写任何产物。"""
+    write(approved / ".neo-skill/locks/PRD-001.lock",
+          '{"object": "PRD-001", "pid": 999999, "created_at": "2026-03-01T10:00:00+08:00",'
+          ' "command": "prd.cr", "rules_version": 1}')
+
+    result = start(approved, expect=1)
+
+    assert "LOCK_CONFLICT" in error_codes(result)
+    assert not spec_dir(approved).exists()
+    assert prd_meta(approved)["status"] == "APPROVED"
+    assert (approved / ".neo-skill/locks/PRD-001.lock").is_file()
+
+
 # --------------------------------------------------------------------------
 # 合法启动
 # --------------------------------------------------------------------------

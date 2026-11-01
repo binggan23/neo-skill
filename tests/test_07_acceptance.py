@@ -334,6 +334,9 @@ def test_approve_moves_prd_to_accepted_with_full_report(prepared: Path) -> None:
         assert f"| {ac} |" in report
     assert "导出文件名格式待统一下一版" in report
     assert "收尾" in report
+    # 报告明确「已确认通过但收尾未完成」，不得暗示需求已完成
+    assert "已确认通过，收尾未完成" in report
+    assert "主需求尚未 DONE" in report
 
 
 def test_approve_records_history_and_confirmation(prepared: Path) -> None:

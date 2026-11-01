@@ -462,17 +462,16 @@ def render_report(workspace: Workspace, record: metadata.PrdRecord, data: dict[s
     else:
         lines.append("无。")
 
+    lines += ["", "## 收尾状态", ""]
+    if kind == DECISION_APPROVED:
+        lines.append("当前状态：已确认通过，收尾未完成；主需求尚未 DONE。")
+    else:
+        lines.append("当前状态：本次验收未通过，尚未开始任何收尾同步。")
     lines += [
         "",
-        "## 收尾状态",
-        "",
         "<!-- TODO: 收尾同步（功能现状、主需求、场景、索引）由 "
-        "`flow-core acceptance closeout` 完成（ticket 08）。",
+        "`flow-core acceptance closeout` 完成（ticket 08）。 -->",
     ]
-    if kind == DECISION_APPROVED:
-        lines.append("当前状态：已确认通过，收尾未完成；主需求尚未 DONE。 -->")
-    else:
-        lines.append("当前状态：本次验收未通过，尚未开始任何收尾同步。 -->")
     return fsutil.render_front_matter(front, "\n".join(lines) + "\n")
 
 

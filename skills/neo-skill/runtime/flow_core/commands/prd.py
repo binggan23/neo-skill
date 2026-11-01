@@ -95,9 +95,24 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                                    help="校验 content_hash 是否与当前内容一致")
     verify.add_argument("--id", required=True)
 
+    status = subparsers.add_parser("baseline-status", parents=parents,
+                                   help="报告基线 hash、失效标记与被取代的历史证据（只读）")
+    status.add_argument("--id", required=True)
+
+    # 变更请求（CR）子组属 ticket 04；参数注册与实现都在 commands/prd_change.py。
+    changes = subparsers.add_parser("cr", parents=parents,
+                                    help="PRD 变更请求（CR）：创建、查询、拒绝与重新批准")
+    from . import prd_change as change_command
+
+    change_command.add_arguments(changes)
+
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     sub = getattr(args, "prd_command", None)
+    if sub == "cr":  # ticket 04：CR 子组自己路由
+        from . import prd_change as change_command
+
+        return change_command.run(workspace, rules, args)
     handler = _HANDLERS.get(sub)
     if handler is None:
         raise FlowError(
@@ -265,7 +280,7 @@ def _in_prd_state(rules: Rules) -> str:
 # --------------------------------------------------------------------------
 def _update(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     record = metadata.load(workspace, args.id, rules=rules)
-    _require_editable(rules, record)
+    _require_editable(workspace, rules, record)
 
     assignments = _parse_sets(args.set, rules)
     if args.scenarios:
@@ -356,7 +371,15 @@ def _show(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resul
     record = metadata.load(workspace, args.id, rules=rules)
     result = Result(command="prd.show")
     result.data["prd"] = record.to_dict(include_body=True)
+    # ticket 04：追加历史批准投影（追加记录，不改历史）；被后续 CR 取代的旧批准带 superseded_by_*
+    from .. import baseline, changerequest as crs
+
+    result.data["prd"]["approvals"] = crs.approvals(workspace, record)
+    result.data["prd"]["crs"] = [item.to_dict() for item in crs.list_crs(workspace, record)]
+    result.data["prd"]["baseline_invalidated"] = record.meta.get("baseline_invalidated")
+    result.data["prd"]["acceptance"] = record.meta.get("acceptance")
     result.data["files"] = record.files()
+    result.data["baseline"] = baseline.evaluate(workspace, rules, record).to_dict()
     result.notes.append(_summary_line(record))
     result.next_actions.extend(_next_actions(record, rules))
     return result
@@ -497,6 +520,7 @@ def _approve(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Re
     team = state.require_team(workspace, object=record.id)
     state.require_member(team, actor, role=str(gate["role"]), object=record.id)
     to_state = str(gate.get("to") or "APPROVED")
+    _require_no_open_cr(workspace, record, rules)
     state.check_transition(rules, "prd", record.status, to_state, object=record.id)
 
     issues = metadata.review(workspace, record, rules)
@@ -576,6 +600,13 @@ def _reject(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
 # --------------------------------------------------------------------------
 # 基线校验
 # --------------------------------------------------------------------------
+def _baseline_status(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
+    """薄壳：实现与门禁共用 `flow_core/baseline.py` 的 `evaluate()`。"""
+    from . import prd_change as change_command
+
+    return change_command.baseline_status(workspace, rules, args)
+
+
 def _verify_hash(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     record = metadata.load(workspace, args.id, rules=rules)
     expected = record.content_hash
@@ -635,16 +666,56 @@ def _gate(rules: Rules, command: str) -> dict[str, Any]:
     return gate
 
 
-def _require_editable(rules: Rules, record: metadata.PrdRecord) -> None:
+def _require_editable(workspace: Workspace, rules: Rules,
+                     record: metadata.PrdRecord) -> None:
+    """草稿状态可改；**已登记 CR 期间也可改**（ticket 04）。
+
+    CR 的意义是把「已批准基线 → 新内容」这件事留痕：CR 创建后 PRD 退回 `IN_REVIEW`，
+    正文必须在这次 CR 下改完再由 `prd cr approve` 重新批准（版本 +1）。
+    没有未决 CR 就改正文会被 `PRD_LOCKED` 拦住。
+    """
     if metadata.is_editable(rules, record.status):
+        return
+    from .. import changerequest as crs
+
+    pending = crs.open_crs(workspace, record)
+    if pending:
         return
     raise FlowError(
         "PRD_LOCKED",
         f"PRD {record.id} 已是 {record.status}，正文与锁定字段不可直接修改",
         object=record.id,
-        suggestion="已批准内容必须走 CR 并重新批准（BR-012）；不要直接改 prd.md 或 metadata",
+        suggestion="已批准内容必须走 CR 并重新批准（BR-012）；先 prd cr create 再改正文，"
+                   "不要直接改 prd.md 或 metadata",
         next_actions=[CR_HINT.format(prd_id=record.id)],
     )
+
+
+def _require_no_open_cr(workspace: Workspace, record: metadata.PrdRecord, rules: Rules) -> None:
+    """ticket 04：变更未决时必须走 `prd cr approve`（版本 +1），不能普通批准。"""
+    from .. import baseline, changerequest as crs
+
+    pending = crs.open_crs(workspace, record)
+    if pending:
+        cr_id = pending[0].id
+        raise FlowError(
+            "CR_OPEN",
+            f"PRD {record.id} 还有未决变更 {cr_id}，不能普通批准",
+            object=record.id,
+            suggestion="用 prd cr approve 重新批准（版本 +1 并生成新 hash），或用 prd cr reject 拒绝该变更",
+            next_actions=[f"{FLOW_CORE} prd cr approve --id {record.id} --cr {cr_id} "
+                          f"--actor {_suggest_actor(workspace, rules)} --confirm"],
+        )
+    marker = baseline.active_invalidation(record)
+    if marker is not None:
+        raise FlowError(
+            "BASELINE_INVALIDATED",
+            f"PRD {record.id} 的基线因变更 {marker.get('cr')} 失效，不能普通批准",
+            object=record.id,
+            suggestion="内容已改时不能无版本递增地重新批准：新建 CR 记录本次改动，再 prd cr approve",
+            next_actions=[f"{FLOW_CORE} prd cr create --id {record.id} --actor <需求负责人> "
+                          f'--confirm --reason "<变更原因>"'],
+        )
 
 
 def _annotate_last_history(meta: dict[str, Any], note: str | None, *, key: str = "note") -> None:
@@ -746,4 +817,5 @@ _HANDLERS = {
     "approve": _approve,
     "reject": _reject,
     "verify-hash": _verify_hash,
+    "baseline-status": _baseline_status,
 }

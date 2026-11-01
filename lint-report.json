@@ -1,0 +1,108 @@
+{
+  "success": false,
+  "command": "lint",
+  "artifacts": [],
+  "errors": [
+    {
+      "code": "CONSTITUTION_NOT_CONFIRMED",
+      "message": "项目约束尚未确认（front matter 的 confirmed 不是 true）",
+      "object": ".specify/constitution.md",
+      "suggestion": "由项目负责人核对后把 .specify/constitution.md 的 confirmed 改为 true"
+    },
+    {
+      "code": "MISSING_REQUIRED_PATH",
+      "message": "必需文件缺失：02-definition/mvp-scope.md",
+      "object": "02-definition/mvp-scope.md",
+      "suggestion": "用 flow-core init 补齐缺失骨架；被裁剪的目录请用 init --prune 记录后再补"
+    },
+    {
+      "code": "TEAM_NOT_CONFIGURED",
+      "message": "团队配置缺失或没有任何成员",
+      "object": "00-management/team.md",
+      "suggestion": "补齐 00-management/team.md 的成员与职责，并把 confirmed 改为 true"
+    }
+  ],
+  "next_actions": [],
+  "data": {
+    "ok": false,
+    "counts": {
+      "error": 3,
+      "warning": 3,
+      "total": 6
+    },
+    "checked": [
+      "project",
+      "identity",
+      "reference",
+      "state",
+      "baseline",
+      "verification",
+      "acceptance",
+      "closeout",
+      "index",
+      "rules"
+    ],
+    "findings": [
+      {
+        "code": "CONSTITUTION_NOT_CONFIRMED",
+        "severity": "error",
+        "topic": "project",
+        "object": ".specify/constitution.md",
+        "message": "项目约束尚未确认（front matter 的 confirmed 不是 true）",
+        "suggestion": "由项目负责人核对后把 .specify/constitution.md 的 confirmed 改为 true",
+        "path": ".specify/constitution.md",
+        "next_action": ""
+      },
+      {
+        "code": "MISSING_REQUIRED_PATH",
+        "severity": "error",
+        "topic": "project",
+        "object": "02-definition/mvp-scope.md",
+        "message": "必需文件缺失：02-definition/mvp-scope.md",
+        "suggestion": "用 flow-core init 补齐缺失骨架；被裁剪的目录请用 init --prune 记录后再补",
+        "path": "02-definition/mvp-scope.md",
+        "next_action": ""
+      },
+      {
+        "code": "TEAM_NOT_CONFIGURED",
+        "severity": "error",
+        "topic": "project",
+        "object": "00-management/team.md",
+        "message": "团队配置缺失或没有任何成员",
+        "suggestion": "补齐 00-management/team.md 的成员与职责，并把 confirmed 改为 true",
+        "path": "00-management/team.md",
+        "next_action": ""
+      },
+      {
+        "code": "INDEX_STALE",
+        "severity": "warning",
+        "topic": "index",
+        "object": "02-definition/feature-map.md",
+        "message": "02-definition/feature-map.md：索引文件里没有受管理区块",
+        "suggestion": "执行 flow-core index generate 重新生成（区块外内容保持不变）",
+        "path": "02-definition/feature-map.md",
+        "next_action": ""
+      },
+      {
+        "code": "INDEX_STALE",
+        "severity": "warning",
+        "topic": "index",
+        "object": "03-requirements/backlog.md",
+        "message": "03-requirements/backlog.md：索引文件里没有受管理区块",
+        "suggestion": "执行 flow-core index generate 重新生成（区块外内容保持不变）",
+        "path": "03-requirements/backlog.md",
+        "next_action": ""
+      },
+      {
+        "code": "INDEX_STALE",
+        "severity": "warning",
+        "topic": "index",
+        "object": "04-prds/index.md",
+        "message": "04-prds/index.md：索引文件里没有受管理区块",
+        "suggestion": "执行 flow-core index generate 重新生成（区块外内容保持不变）",
+        "path": "04-prds/index.md",
+        "next_action": ""
+      }
+    ]
+  }
+}

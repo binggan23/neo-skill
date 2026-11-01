@@ -260,6 +260,46 @@ def test_recover_run_from_committing_state(inited_project: Path):
         h8.index_text(inited_project, "04-prds/index.md")) or "")
 
 
+def test_recover_run_without_tx_recovers_all_unfinished(inited_project: Path):
+    h8.accepted(inited_project)
+    failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,
+                        env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "5"})
+    tx_id = failed.json["data"]["tx"]
+
+    result = h8.recover(inited_project, "run", "--actor", "alice", "--confirm")
+    assert result.ok, result
+    assert [item["id"] for item in result.json["data"]["recovered"]] == [tx_id]
+    assert result.json["data"]["main_req_status"] == "DONE"
+
+    # 恢复后没有未完成事务；--all 仍能看到审计记录
+    assert h8.recover(inited_project, "list").json["data"]["transactions"] == []
+    everything = h8.recover(inited_project, "list", "--all").json["data"]["transactions"]
+    assert [item["id"] for item in everything] == [tx_id]
+    assert everything[0]["finished"] is True
+    assert everything[0]["pending"] == []
+
+
+def test_conflict_then_fresh_closeout_works(inited_project: Path):
+    """基线冲突的恢复建议（重新执行 closeout 重算基线）是可执行的。"""
+    h8.accepted(inited_project)
+    failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,
+                        env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "6"})
+    tx_id = failed.json["data"]["tx"]
+    req_path = inited_project / "03-requirements/items/REQ-001-batch-parse.md"
+    write(req_path, read(req_path).replace("status: IN_PRD", "status: IN_PRD\nnote: 人工补充"))
+
+    assert "BASELINE_CONFLICT" in h8.error_codes(
+        h8.recover(inited_project, "run", "--tx", tx_id, "--actor", "alice",
+                   "--confirm", expect=1))
+
+    fresh = h8.closeout(inited_project, extra=("--actor", "alice"))
+    assert fresh.ok, fresh
+    assert fresh.json["data"]["closeout"]["tx"] != tx_id, "应开一条新事务"
+    assert req_meta(inited_project)["status"] == "DONE"
+    # 旧的失败事务作为审计记录保留
+    assert h8.tx_yaml(inited_project, tx_id)["state"] != "COMMITTED"
+
+
 def test_recover_refuses_baseline_conflict(inited_project: Path):
     h8.accepted(inited_project)
     failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,

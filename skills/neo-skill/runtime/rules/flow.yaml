@@ -1,0 +1,88 @@
+# Neo Skill 声明式规则（发布源）
+#
+# 这是 flow-core 的单一事实来源：目录骨架、编号、状态机、门禁与裁剪规则都在这里声明。
+# `flow-core init` 会把它复制成项目基线 `.specify/rules/flow.yaml`；
+# 运行时优先读取项目基线，缺失才回退本文件。
+#
+# 规则是数据，不是代码：新增状态或跳转只改这里，不要改 flow_core/state.py。
+version: 1
+
+limits:
+  max_scenarios_per_prd: 8
+  max_repair_rounds: 3
+
+ids:
+  width: 3
+  prefixes:
+    req: REQ
+    prd: PRD
+    sc: SC
+    ac: AC
+    cr: CR
+    dec: DEC
+    adr: ADR
+
+roles:
+  - requirement_owner
+  - project_owner
+  - developer
+  - tester
+  - stakeholder
+
+req:
+  initial: NEW
+  states: [NEW, TRIAGED, PLANNED, IN_PRD, DONE, DEFERRED, REJECTED]
+  transitions:
+    NEW: [TRIAGED, DEFERRED, REJECTED]
+    TRIAGED: [PLANNED, DEFERRED, REJECTED]
+    PLANNED: [IN_PRD, TRIAGED, DEFERRED, REJECTED]
+    IN_PRD: [DONE]
+    DONE: []
+    DEFERRED: [TRIAGED, REJECTED]
+    REJECTED: []
+
+prd:
+  initial: DRAFT
+  states:
+    - DRAFT
+    - IN_REVIEW
+    - CHANGES_REQUESTED
+    - APPROVED
+    - DEVELOPING
+    - READY_FOR_ACCEPTANCE
+    - ACCEPTED
+    - REJECTED
+    - SUPERSEDED
+  transitions:
+    DRAFT: [IN_REVIEW, REJECTED]
+    IN_REVIEW: [APPROVED, CHANGES_REQUESTED, REJECTED]
+    CHANGES_REQUESTED: [IN_REVIEW, DRAFT]
+    APPROVED: [DEVELOPING, IN_REVIEW, SUPERSEDED]
+    DEVELOPING: [READY_FOR_ACCEPTANCE, IN_REVIEW]
+    READY_FOR_ACCEPTANCE: [ACCEPTED, DEVELOPING, IN_REVIEW]
+    ACCEPTED: []
+    REJECTED: []
+    SUPERSEDED: []
+
+# 人工决策命令 → 需要的团队职责。状态跳转本身由上面的状态机约束。
+gates:
+  req.confirm: {role: stakeholder, from: NEW, to: TRIAGED}
+  req.plan: {role: requirement_owner, from: TRIAGED, to: PLANNED}
+  req.unplan: {role: requirement_owner, from: PLANNED, to: TRIAGED}
+  prd.submit-review: {role: stakeholder, from: DRAFT, to: IN_REVIEW}
+  prd.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
+  prd.request-changes: {role: requirement_owner, from: IN_REVIEW, to: CHANGES_REQUESTED}
+  dev.start: {role: developer, from: APPROVED, to: DEVELOPING}
+  acceptance.submit: {role: developer, from: DEVELOPING, to: READY_FOR_ACCEPTANCE}
+  acceptance.approve: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: ACCEPTED}
+  acceptance.reject: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: DEVELOPING}
+
+directories:
+  prunable: [discovery, design, growth, releases, meetings, reports]
+  not_prunable: [03-requirements, 04-prds, 07-acceptance, .specify, .neo-skill]
+
+# 受管理区块的目标文件（flow-core index 独占生成）
+managed_blocks:
+  - 03-requirements/backlog.md
+  - 02-definition/feature-map.md
+  - 04-prds/index.md

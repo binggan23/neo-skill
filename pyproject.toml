@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neo-skill"
+version = "0.1.0"
+description = "Neo Skill P0：以 Skill 为入口、以 flow-core 为确定性内核的研发闭环"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # 仅一个第三方依赖，锁定范围；其余全部使用标准库
+    "PyYAML>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10.0"]
+
+[tool.setuptools]
+packages = ["flow_core", "flow_core.commands"]
+package-dir = { "flow_core" = "skills/neo-skill/runtime/flow_core" }
+
+[tool.setuptools.package-data]
+"flow_core" = []
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+# 测试按文件分批跑（共享设计 §10）：不要用一条命令跑全套大 fixture。

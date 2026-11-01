@@ -117,11 +117,12 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     content = crs.summarize(detail, fallback=title)
     slug = crs.validate_slug(args.slug, reason=reason)
 
-    # 触发失效的状态集合来自规则 `prd.cr_states`（SRS-FR-050）
-    triggers = record.status in metadata.cr_states(rules)
-    to_state = _trigger_state(rules) if triggers else record.status
-    if triggers:
-        state.check_transition(rules, PRD_MACHINE, record.status, to_state, object=record.id)
+    # 触发失效的状态集合来自规则 `prd.cr_states`（SRS-FR-050）。
+    # 状态机里没有 `<status> → IN_REVIEW` 出边时（如终态 `ACCEPTED`/`SUPERSEDED`）只记失效、
+    # 不改状态：规则表是状态的唯一事实来源，代码不越权造跳转。
+    invalidating = record.status in metadata.cr_states(rules)
+    to_state = _trigger_state(rules, record.status) if invalidating else None
+    triggers = to_state is not None
 
     at = fsutil.now_iso()
     previous_status = record.status
@@ -133,10 +134,11 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
                        reason=reason, impact=impact, content=content, actor=actor,
                        detail=detail)
 
-        if triggers:
-            state.apply_transition(record.meta, machine=PRD_MACHINE, to_state=to_state,
-                                   actor=actor, action=command, rules=rules)
-            _annotate_history(record.meta, f"{cr_id}: {title}")
+        if invalidating:
+            if triggers:
+                state.apply_transition(record.meta, machine=PRD_MACHINE, to_state=to_state,
+                                       actor=actor, action=command, rules=rules)
+                _annotate_history(record.meta, f"{cr_id}: {title}")
             _append_decision(record.meta, actor=actor, role=str(gate["role"]),
                              decision="changes_requested", object_id=record.id,
                              note=reason, extra={"cr": cr_id})
@@ -162,11 +164,16 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
         result.add(path, "baseline-marker", "updated")
     result.data["prd"] = record.to_dict()
     result.data["cr"] = cr.to_dict()
-    result.data["invalidated"] = bool(triggers)
+    result.data["invalidated"] = bool(invalidating)
+    result.data["status_changed"] = bool(triggers)
     result.notes.append(f"{record.id} 已登记变更 {cr_id}（{actor}）：{title}")
-    if triggers:
-        result.notes.append(f"PRD 状态 {previous_status} → {to_state}，"
-                            "旧基线失效：重新批准前不得继续正式开发")
+    if invalidating:
+        if triggers:
+            result.notes.append(f"PRD 状态 {previous_status} → {to_state}，"
+                                "旧基线失效：重新批准前不得继续正式开发")
+        else:
+            result.notes.append(f"PRD 处于终态 {previous_status}（规则表无回到 IN_REVIEW 的出边），"
+                                "只登记变更并标记旧基线失效，状态保持不变")
         if marked:
             result.notes.append("已标记基线失效：" + "、".join(marked))
     else:
@@ -288,7 +295,7 @@ def _reject(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
             suggestion="例如 --reason \"本期范围已冻结，放到 v0.2.0\"",
         )
 
-    marker = baseline.invalidation(record)
+    marker = _own_invalidation(record, cr.id)
     intact = _baseline_intact(record)
     restore_to: str | None = None
     if intact and isinstance(marker, dict):
@@ -331,8 +338,11 @@ def _reject(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     if restore_to:
         result.notes.append(f"正文与锁定字段未变，PRD 已回到 {restore_to}，基线恢复有效")
     else:
-        result.notes.append("内容已改动，PRD 留在 IN_REVIEW，基线仍失效："
-                            "请另提 CR 或整理草稿后重新提交评审")
+        result.notes.append(f"内容已改动，PRD 留在 {record.status}，基线仍失效")
+        result.next_actions.append(
+            f"{FLOW_CORE} prd cr create --id {record.id} --actor {_suggest_actor(workspace, rules)} "
+            f'--confirm --reason "<本次改动的真实原因>"'
+        )
     return result
 
 
@@ -461,13 +471,15 @@ def _gate(rules: Rules, command: str) -> dict:
     return gate
 
 
-def _trigger_state(rules: Rules) -> str:
-    """CR 触发时 PRD 退回的状态（读 `prd` 状态机里 `* → IN_REVIEW` 的边，不硬编码）。"""
-    for from_state in metadata.cr_states(rules):
-        for target in rules.transitions(PRD_MACHINE).get(from_state, []):
-            if target == "IN_REVIEW":
-                return target
-    return "IN_REVIEW"
+def _trigger_state(rules: Rules, from_state: str) -> str | None:
+    """CR 触发时 PRD 退回的状态：读 `prd` 状态机里 `from_state → *` 中包含 `IN_REVIEW` 的边。
+
+    不硬编码状态值；没有这条边（终态）就返回 None，由调用方只标失效不改状态。
+    """
+    for target in rules.transitions(PRD_MACHINE).get(from_state, []):
+        if target == "IN_REVIEW":
+            return target
+    return None
 
 
 def _require_open(cr) -> None:
@@ -487,9 +499,22 @@ def _baseline_intact(record) -> bool:
     return bool(expected) and expected == record.compute_content_hash()
 
 
-def _resolve_invalidation(record, *, cr_id: str, at: str) -> None:
+def _own_invalidation(record, cr_id: str):
+    """只返回「由这个 CR 建立」的失效标记；别的 CR 建立的标记不由它解决。"""
     marker = baseline.invalidation(record)
-    if marker is None:
+    if marker is None or str(marker.get("cr") or "") != cr_id:
+        return None
+    return marker
+
+
+def _resolve_invalidation(record, *, cr_id: str, at: str) -> None:
+    """重新批准建立新基线：解除**当前任何**未决失效标记，并记下解决它的 CR。
+
+    一个已拒绝的 CR 若因正文已改而留下了失效标记（见 `_reject`），后来的新 CR 批准
+    覆盖了当前内容，这个标记就该解除——否则 PRD 会永远卡在失效状态。
+    """
+    marker = baseline.invalidation(record)
+    if marker is None or not marker.get("active", False):
         return
     record.meta["baseline_invalidated"] = baseline.mark_resolved(marker, cr_id=cr_id, at=at)
 

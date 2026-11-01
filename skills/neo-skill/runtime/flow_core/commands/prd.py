@@ -637,6 +637,20 @@ def _verify_hash(workspace: Workspace, rules: Rules, args: argparse.Namespace) -
             next_action=CR_HINT.format(prd_id=record.id),
         )
         return result
+    # ticket 04：hash 一致但失效标记未解除（CR 未批准）同样不算有效基线
+    from .. import baseline
+
+    marker = baseline.active_invalidation(record)
+    if marker is not None:
+        result.data["baseline_valid"] = False
+        result.fail(
+            "BASELINE_INVALIDATED",
+            f"PRD {record.id} 因变更 {marker.get('cr')} 处于基线失效状态，重新批准前不得继续开发",
+            object=record.id,
+            suggestion="需求负责人批准该 CR（或在其内容未变时拒绝它）后基线才恢复",
+            next_action=f"{FLOW_CORE} prd baseline-status --id {record.id}",
+        )
+        return result
 
     result.notes.append(f"{record.id} 内容与批准基线一致（版本 {record.version}）")
     return result
@@ -676,10 +690,9 @@ def _require_editable(workspace: Workspace, rules: Rules,
     """
     if metadata.is_editable(rules, record.status):
         return
-    from .. import changerequest as crs
+    from .. import baseline, changerequest as crs
 
-    pending = crs.open_crs(workspace, record)
-    if pending:
+    if crs.open_crs(workspace, record) or baseline.active_invalidation(record) is not None:
         return
     raise FlowError(
         "PRD_LOCKED",

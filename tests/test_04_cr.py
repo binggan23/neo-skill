@@ -336,6 +336,37 @@ def test_existing_spec_is_marked_baseline_invalid(approved: Path) -> None:
     assert marker["invalidated_at"]
 
 
+def test_cr_from_terminal_state_invalidates_without_changing_state(approved: Path) -> None:
+    # ACCEPTED 是终态（规则表无回到 IN_REVIEW 的出边）：只登记 CR + 标记失效，状态不变。
+    patch_meta(approved, status="ACCEPTED")
+
+    result = cr_create(approved)
+
+    assert result.code == 0, result
+    assert result.json["data"]["invalidated"] is True
+    assert result.json["data"]["status_changed"] is False
+    meta = prd_meta(approved)
+    assert meta["status"] == "ACCEPTED"
+    assert meta["baseline_invalidated"]["active"] is True
+    assert baseline_status(approved).json["data"]["valid"] is False
+
+
+def test_second_cr_does_not_duplicate_downstream_annotation(approved: Path) -> None:
+    report = approved / "07-acceptance/resume/PRD-001-batch-parse/report.md"
+    write(report, "# 验收报告\n\n- 结论：通过\n")
+    cr_create(approved, reason="范围调整")
+
+    second = cr_create(approved, reason="验收标准补充")
+
+    # 第二个 CR 时 PRD 已在 IN_REVIEW 且基线已失效：不重复追加注解，只登记新 CR
+    assert second.json["data"]["invalidated"] is False
+    text = read(report)
+    assert text.count("基线失效") == 1, text
+    listed = run_cli(approved, "prd", "cr", "list", "--id", "PRD-001", "--status", "OPEN")
+    assert [item["id"] for item in listed.json["data"]["crs"]] == ["CR-001", "CR-002"]
+    assert baseline_status(approved).json["data"]["invalidated_by"]["cr"] == "CR-001"
+
+
 def test_cr_does_not_create_missing_spec_or_acceptance_dirs(approved: Path) -> None:
     assert not (approved / "06-specs/resume").exists()
 
@@ -590,6 +621,32 @@ def test_cr_reject_keeps_baseline_invalid_when_content_changed(approved: Path) -
     assert baseline_status(approved).json["data"]["valid"] is False
 
 
+def test_rejected_cr_with_changed_content_needs_a_new_cr(approved: Path) -> None:
+    with_cr(approved)
+    edited = prd_text(approved).replace("5 分钟内", "20 分钟内")
+    write(approved / "prd-edit.md", edited)
+    assert run_cli(approved, "prd", "update", "--id", "PRD-001", "--body-file",
+                   str(approved / "prd-edit.md"), env=ENV).code == 0
+    rejected = run_cli(approved, "prd", "cr", "reject", "--id", "PRD-001", "--cr", "CR-001",
+                       "--actor", "alice", "--confirm", "--reason", "先不改", env=ENV)
+    assert rejected.code == 0, rejected
+
+    # 正文已偏离批准基线：普通批准不行，必须由新的 CR 承载这次改动
+    plain = run_cli(approved, "prd", "approve", "--id", "PRD-001", "--actor", "alice",
+                    "--confirm", env=ENV)
+    assert plain.code == 1
+    assert error_codes(plain) == {"BASELINE_INVALIDATED"}
+
+    second = cr_create(approved, reason="确认把时延改成 20 分钟")
+    assert second.json["data"]["cr"]["id"] == "CR-002"
+    approved_again = run_cli(approved, "prd", "cr", "approve", "--id", "PRD-001",
+                             "--cr", "CR-002", "--actor", "alice", "--confirm", env=ENV)
+
+    assert approved_again.code == 0, approved_again
+    assert prd_meta(approved)["version"] == 2
+    assert baseline_status(approved).json["data"]["valid"] is True
+
+
 # ------------------------------------------------------------------ 查询
 def test_cr_list_and_show(approved: Path) -> None:
     cr_create(approved, reason="范围调整")
@@ -629,14 +686,68 @@ def test_appending_records_does_not_change_body_hash(approved: Path) -> None:
     write(prd_dir(approved) / "reviews/2026-03-06-extra-review.md", "# 追加评审\n\n再确认一次。\n")
     write(prd_dir(approved) / "changes/CR-009-manual-note.md",
           "# CR-009 追加记录\n\n只追加。\n")
+
+    status = baseline_status(approved)
+    verified = run_cli(approved, "prd", "verify-hash", "--id", "PRD-001")
+
+    assert status.code == 0, status
+    assert status.json["data"]["current"] == hash_after
+    assert verified.code == 0, verified
+    assert verified.json["data"]["actual"] == hash_after
+
+
+def test_new_cr_keeps_body_hash_but_invalidates_baseline(approved: Path) -> None:
+    with_cr(approved)
+    run_cli(approved, "prd", "cr", "approve", "--id", "PRD-001", "--cr", "CR-001",
+            "--actor", "alice", "--confirm", env=ENV)
+    hash_after = prd_meta(approved)["content_hash"]
+
     cr_create(approved, reason="补充一条说明")
 
     status = baseline_status(approved)
     verified = run_cli(approved, "prd", "verify-hash", "--id", "PRD-001")
 
+    # CR 文件与 history 不参与正文 hash；失效只由 metadata 的标记驱动
     assert status.json["data"]["current"] == hash_after
-    assert verified.code == 0, verified
+    assert status.json["data"]["reasons"] == ["BASELINE_INVALIDATED"]
+    assert verified.code == 1
+    assert error_codes(verified) == {"BASELINE_INVALIDATED"}
     assert verified.json["data"]["actual"] == hash_after
+
+
+def test_cr_create_on_unknown_prd_is_rejected(inited_project: Path) -> None:
+    result = run_cli(inited_project, "prd", "cr", "create", "--id", "PRD-404", "--actor",
+                     "alice", "--confirm", "--reason", CR_REASON, env=ENV)
+
+    assert result.code == 1
+    assert error_codes(result) == {"PRD_NOT_FOUND"}
+
+
+def test_cr_create_lock_conflict_leaves_no_trace(approved: Path) -> None:
+    before = read(meta_path(approved))
+    write(approved / ".neo-skill/locks/PRD-001.lock",
+          '{"object": "PRD-001", "pid": 999999, "created_at": "2026-03-01T09:00:00+08:00",'
+          ' "command": "prd.cr.create", "rules_version": 1}')
+
+    result = cr_create(approved, expect=1)
+
+    assert error_codes(result) == {"LOCK_CONFLICT"}
+    assert read(meta_path(approved)) == before
+    assert cr_files(approved) == []
+
+
+def test_failed_cr_approve_leaves_no_lock(approved: Path) -> None:
+    with_cr(approved)
+    broken = prd_text(approved).replace("## 依赖与风险", "## 依赖")
+    write(approved / "prd-broken2.md", broken)
+    run_cli(approved, "prd", "update", "--id", "PRD-001", "--body-file",
+            str(approved / "prd-broken2.md"), env=ENV)
+
+    run_cli(approved, "prd", "cr", "approve", "--id", "PRD-001", "--cr", "CR-001",
+            "--actor", "alice", "--confirm", env=ENV)
+
+    assert not list((approved / ".neo-skill/locks").glob("*.lock"))
+    assert not [p for p in prd_dir(approved).rglob("*.tmp")]
 
 
 def test_cr_lifecycle_leaves_no_lock_behind(approved: Path) -> None:

@@ -312,7 +312,8 @@ def test_verify_rejected_outside_developing(state: str, approved: Path) -> None:
 
     assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
     if state == "approved":
-        assert any("dev start" in item for item in result.json["next_actions"])
+        assert any("dev start" in item for item in result.json["next_actions"] + [
+            result.json["errors"][0].get("suggestion") or ""])
     assert not ver_dir(project).exists()
 
 
@@ -431,6 +432,16 @@ def test_guard_requires_previous_verification(developing: Path) -> None:
     result = run(developing, "dev", "verify", "guard", "--prd", PRD_ID, expect=1)
 
     assert "VERIFICATION_MISSING" in error_codes(result)
+
+
+def test_guard_also_works_after_submission_for_human_review(developing: Path) -> None:
+    _verify_all_pass(developing)
+    run(developing, "dev", "submit-acceptance", "--prd", PRD_ID)
+
+    result = run(developing, "dev", "verify", "guard", "--prd", PRD_ID)
+
+    assert result.json["data"]["ok"] is True
+    assert result.json["data"]["changed_files"] == []
 
 
 # --------------------------------------------------------------------------

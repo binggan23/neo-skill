@@ -432,26 +432,32 @@ def _verify(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
         raise
 
 
-def _require_developing(workspace: Workspace, rules: Rules, args: argparse.Namespace
-                 ) -> metadata.PrdRecord:
-    """验证类命令的公共前置：显式绑定 PRD + 状态属 DEVELOPING（否则提示先 dev start）。"""
+def _require_developing(workspace: Workspace, rules: Rules, args: argparse.Namespace,
+                        *, extra_states: tuple[str, ...] = ()
+                        ) -> metadata.PrdRecord:
+    """验证类命令的公共前置：显式绑定 PRD + 状态允许产出/审计验证证据。
+
+    `dev verify*` 只在 `DEVELOPING`（`rules.dev.verify_states`）下可执行；
+    `dev verify guard` 额外允许 `READY_FOR_ACCEPTANCE`——它是只读审计，
+    人工验收时正好需要复核证据是否被伪造（BR-014/015）。
+    """
     record = metadata.load(workspace, _require_prd(args), rules=rules)
-    allowed = verification.verify_states(rules)
+    allowed = tuple(verification.verify_states(rules)) + tuple(extra_states)
     if record.status in allowed:
         return record
-    suggestion = (f"先执行 {FLOW_CORE} dev start --prd {record.id} --actor {ACTOR_PLACEHOLDER}"
+    suggestion = ("只有开发中的 PRD 才能产出验证证据；先批准 PRD 并启动开发："
+                  f"{FLOW_CORE} dev start --prd {record.id} --actor {ACTOR_PLACEHOLDER}"
                   " --confirm")
-    if record.status != "DEVELOPING":
-        suggestion = ("只有开发中的 PRD 才能产出验证证据；先批准 PRD 并启动开发："
-                      f"{FLOW_CORE} dev start --prd {record.id} --actor {ACTOR_PLACEHOLDER}"
-                      " --confirm")
+    if record.status == "APPROVED":
+        suggestion = (f"PRD {record.id} 已批准但还没启动开发：先执行 "
+                      f"{FLOW_CORE} dev start --prd {record.id} --actor "
+                      f"{ACTOR_PLACEHOLDER} --confirm，再执行验证")
     raise FlowError(
         "PRD_STATE_NOT_ALLOWED",
         f"PRD {record.id} 当前状态 {record.status}，不允许执行验证（允许 {'、'.join(allowed)}）",
         object=record.id,
         suggestion=suggestion,
-        next_actions=[f"{FLOW_CORE} dev start --prd {record.id} --actor {ACTOR_PLACEHOLDER}"
-                      " --confirm"],
+        next_actions=[f"{FLOW_CORE} dev verification-status --prd {record.id}"],
     )
 
 
@@ -622,7 +628,8 @@ def _verify_repair(workspace: Workspace, rules: Rules, args: argparse.Namespace)
 
 def _verify_guard(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     command = "dev.verify.guard"
-    record = _require_developing(workspace, rules, args)
+    record = _require_developing(workspace, rules, args,
+                                 extra_states=(verification.ACCEPTANCE_SUBMIT_STATE,))
     data = verification.load_state(workspace, record)
     findings = verification.guard_findings(workspace, record, data)
 

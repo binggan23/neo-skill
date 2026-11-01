@@ -299,7 +299,7 @@ def _show(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resul
     record = reqs.load(workspace, args.id, rules=rules)
     result = Result(command="req.show")
     result.data["req"] = record.to_dict(include_body=True)
-    readiness = reqs.prd_readiness(workspace, rules, record)
+    readiness = reqs.prd_readiness(rules, record)
     result.data["prd_readiness"] = readiness
     result.notes.append(_summary_line(record))
     for reason in readiness["reasons"]:

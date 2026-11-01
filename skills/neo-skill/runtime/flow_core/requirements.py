@@ -401,7 +401,7 @@ def grilling(record: ReqRecord) -> dict[str, Any]:
     return data
 
 
-def prd_readiness(workspace: Workspace, rules: Rules, record: ReqRecord) -> dict[str, Any]:
+def prd_readiness(rules: Rules, record: ReqRecord) -> dict[str, Any]:
     """`req show` 的只读投影：这条需求现在能不能作为主需求创建 PRD（BR-010）。
 
     与 `require_planned` 同一套判断，区别是本函数返回原因列表而不抛错，

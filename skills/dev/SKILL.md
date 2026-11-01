@@ -1,16 +1,16 @@
 ---
 name: dev
-description: Neo Skill 开发阶段入口。当用户要从某个已批准的 PRD 开始正式开发、建立 Spec/Plan/Tasks、查看开发基线是否仍然有效、或检查代码/Spec 是否超出 PRD 范围时使用。
+description: Neo Skill 开发阶段入口。当用户要从某个已批准的 PRD 开始正式开发、建立 Spec/Plan/Tasks、执行验证并保存证据、查看开发/验证基线是否仍然有效、或检查代码/Spec 是否超出 PRD 范围时使用。
 ---
 
 # dev：从有效 PRD 启动开发
 
 本 Skill 负责把一份**已批准的 PRD** 变成可执行的技术工作：门禁 → Spec/Plan/Tasks →
-TDD 实现 → 验证（移交 `verification`/ticket 06）→ 提交验收。它**不**负责需求排期（见
-`requirements`）、PRD 编写与批准（见 `prd`）、人工验收（见 `acceptance`）。
+TDD 实现 → 验证证据 → 提交人工验收。它**不**负责需求排期（见 `requirements`）、
+PRD 编写与批准（见 `prd`）、人工验收结论（见 `acceptance`）。
 
 词汇以项目 `GLOSSARY.md` 为准：主需求、基线、功能现状、人工确认、收尾。
-流程规则以 `docs/srs.md` §5.5（FR-060～063）、§6.3、§7（BR-011/015/018）为准。
+流程规则以 `docs/srs.md` §5.5（FR-060～068）、§6.3、§7（BR-011/014/015/016/018）为准。
 
 ## 入口：必须显式绑定一个 PRD
 
@@ -122,21 +122,82 @@ flow-core dev scope-check --prd PRD-001 --paths src/resume/parse.py,tests/test_p
   要求 CR 或人工澄清 → **绝不自作主张改 PRD、AC 或扩大范围**。
   需要变更时提示 `flow-core prd cr --id PRD-001 --reason "<原因>"`。
 
-## 阶段五：验证（ticket 06 提供入口，本阶段只留位置）
+## 阶段五：验证与证据（FR-064～066、BR-014/015）
 
-适用验证的执行、`verification.md` 生成、`READY_FOR_ACCEPTANCE` 提交属 ticket 06
-（`docs/srs.md` FR-064～068）。现在能做的：
+只有 `DEVELOPING` 的 PRD 能产出验证证据。每条 AC 都必须有结论：`pass`、`fail`、`blocked`、
+`not-run` 或带理由的 `not-applicable`。**未执行/失败/阻塞绝不能记成通过。**
 
-- 手工跑项目测试并保留原始输出与退出码，**不得删用例、降断言、跳测试**（BR-015）；
-- `06-specs/<module>/PRD-NNN-<slug>/verification.md` 由验证命令生成，不要在 `dev start` 时伪造。
+```bash
+# 执行项目声明的验证命令（在项目根目录原样执行，保存原始输出与退出码）
+flow-core dev verify --prd PRD-001 --suite unit --command "pytest -q" --ac AC-RES-01-01,AC-RES-01-02
 
-遇到「测试失败想改 AC 让它过」「不适用就当作通过」这类念头 → 停下来，那是 BR-015 禁止的。
+# 不能由 flow-core 直接跑的外部验证：先把完整输出写到文件，再登记
+flow-core dev verify record --prd PRD-001 --suite integration --result blocked \
+  --ac AC-RES-01-03 --exit-code 1 --output-file ci-output.log --reason "无外部环境"
 
-## 提交验收（ticket 06）
+# 本环境确实不适用（必须给理由，不得以环境限制自动豁免）
+flow-core dev verify --prd PRD-001 --suite e2e --ac AC-RES-02-01 \
+  --not-applicable --reason "本环境无外部存储，由人工验收确认"
+```
 
-全部适用验证通过后由 `acceptance`/验证流程把 PRD 推到 `READY_FOR_ACCEPTANCE`，
-并记录 Git commit 或非 Git 的内容摘要。**AI 不得把 `READY_FOR_ACCEPTANCE` 当成验收通过**，
-人工验收见 `acceptance` Skill（BR-013）。
+产物（都在 `06-specs/<module>/PRD-NNN-<slug>/` 下）：
+
+| 产物 | 作用 |
+| --- | --- |
+| `verification/raw-<suite>-<时间戳>.log` | **原始**命令输出与 stderr、退出码，不改写（NFR-008） |
+| `verification.md` | 结构化报告：front matter + 逐条 AC 表格 + 原始输出位置 + 修复轮次 + 结论 |
+| `verification.json` | 机器读：`runs[]`、`acs[]`、`snapshot`、`submission`（供 lint 与验收） |
+
+### 修复轮次（FR-065）
+
+```bash
+flow-core dev verify repair --prd PRD-001 --note "修空值分支"
+```
+
+默认上限 3 轮，可在 `.specify/constitution.md` 用 `max_repair_rounds` 覆盖；达到上限返回
+`REPAIR_LIMIT_EXCEEDED`，此时**必须请人介入**（需求不明确或方向错误时不得继续自动修复）。
+任一次验证 `pass` 会把轮次归零。
+
+### 防伪造检查（BR-014/015）
+
+```bash
+flow-core dev verify guard --prd PRD-001
+```
+
+与上一次验证记录的快照对比，命中即 `success: false`：
+
+| 错误码 | 含义 |
+| --- | --- |
+| `TEST_CASE_REMOVED` | 验证之后测试用例被删除 |
+| `ASSERTION_WEAKENED` | 用例的断言条数减少 |
+| `TEST_SKIPPED` | 新增 `@skip` / `skipif` / `xfail`，或验证命令含 `-k`/`--ignore`/`--deselect` |
+| `AC_MODIFIED` | PRD 的 AC 清单在验证之后被改动（应走 CR） |
+
+确需豁免跳过项：`--allow-skip --reason "<可审计理由>"`，理由记入 `verification.json`。
+
+## 提交人工验收（FR-067/068）
+
+```bash
+flow-core dev submit-acceptance --prd PRD-001 --actor carol
+```
+
+- 前置：所有适用项都是 `pass` 或带理由的 `not-applicable`，否则 `VERIFICATION_INCOMPLETE`
+  并列出未通过项；PRD/代码/证据变化过则 `BASELINE_STALE`（旧证据不得沿用）。
+- 记录 `code_version`（Git 项目 `git:<sha>`，非 Git 项目 `src/`+`tests/` 内容摘要 `sha256:<hex>`）、
+  `prd_hash`、`verification_digest` 与 AC 清单。
+- 机械推进 `DEVELOPING → READY_FOR_ACCEPTANCE`（不需要人工批准），然后提醒人去验收。
+- **`READY_FOR_ACCEPTANCE` 不是验收通过。** 验收结论只能由人给（见 `acceptance` Skill，BR-013）。
+
+随时核对基线：
+
+```bash
+flow-core dev verification-status --prd PRD-001
+```
+
+`data` 里 `acs[]`（逐条结论）、`summary`、`complete`、`stale` + `stale_reasons`
+（`PRD_CHANGED` / `CODE_CHANGED` / `EVIDENCE_CHANGED`）、`code_version`、`prd_hash`、
+`verification_digest`、`repair_rounds`/`repair_limit`。`stale: true` 就返回
+`BASELINE_STALE`，下一步是重新验证，不是继续提交。
 
 ## 基线失效与中断
 
@@ -166,6 +227,12 @@ flow-core dev status --prd PRD-001
 | `dev start --prd PRD-001 --actor A --confirm` | 建 Spec/Plan/Tasks + `.baseline.yaml` | `06-specs/` / `APPROVED → DEVELOPING` |
 | `dev status --prd PRD-001` | 产物与基线有效性报告（只读） | 否 / 否 |
 | `dev scope-check --prd PRD-001 [--paths a,b]` | 场景/AC 与变更路径范围检查（只读） | 否 / 否 |
+| `dev verify --prd P --suite S --command "…" --ac …` | 执行验证命令并保存原始输出与 AC 结论 | `06-specs/` 下验证产物 / 否 |
+| `dev verify record --prd P --suite S --result … --ac … --exit-code N --output-file F` | 登记外部已执行结果 | 同上 / 否 |
+| `dev verify repair --prd P --note T` | 记一轮自动修复（受上限约束） | 同上 / 否 |
+| `dev verify guard --prd P [--allow-skip --reason R]` | 防伪造检查（只读判定，写检查记录） | 同上 / 否 |
+| `dev submit-acceptance --prd P [--actor A]` | 全部覆盖后提交人工验收 | `verification.*` / `DEVELOPING → READY_FOR_ACCEPTANCE` |
+| `dev verification-status --prd P` | 逐条 AC 结论、代码版本与基线是否有效 | 否 / 否 |
 
 `data` 字段：`gate`/`start` 带 `checks[]`、`binding`（`start` 另带 `prd`、`baseline`）；
 `status` 带 `files`、`baseline`、`baseline_hash`、`current_hash`、`hash_matches`、
@@ -177,5 +244,6 @@ flow-core dev status --prd PRD-001
 
 开始开发前把这几件事说清楚：绑定的 PRD 与版本、`content_hash`、`spec_dir`、
 场景与 AC 清单、`.baseline.yaml` 的 `baseline_hash`。
-进入验收时交接：Spec/Plan/Tasks 路径、验证证据位置、代码版本（commit 或内容摘要）。
+进入验收时交接：Spec/Plan/Tasks 路径、`verification.md` 与原始输出目录、
+`code_version`、`prd_hash`、`verification_digest`、逐条 AC 结论。
 **未绑定或基线失效的 PRD 不得继续开发**（BR-011/BR-016）。

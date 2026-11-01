@@ -55,7 +55,7 @@ npx skills@latest update
 | `doctor` | 检查 Python / Node / Skill 资源 / `flow-core` / 残留锁，给出修复建议 | 已可用 |
 | `req` | 需求草稿、grilling 共识确认、人工排期 | 已可用 |
 | `prd` | PRD 草稿、结构自审、提交评审、人工批准与基线 hash（CR 属后续 ticket） | 已可用 |
-| `dev` | 开发门禁、绑定 PRD、Spec/Plan/Tasks、状态与范围检查（验证与提交验收属后续 ticket） | 已可用 |
+| `dev` | 开发门禁、绑定 PRD、Spec/Plan/Tasks、状态与范围检查、验证证据与提交人工验收 | 已可用 |
 | `acceptance` | Demo/checklist、人工验收结论、收尾同步 | 计划中 |
 | `lint` | 结构、引用、hash、基线与收尾一致性检查 | 计划中 |
 | `index` | 生成受管理索引区块（backlog / feature-map / PRD 索引） | 计划中 |

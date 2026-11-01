@@ -232,24 +232,34 @@ def _check_locks(workspace: Workspace) -> dict:
             "suggestion": None,
         }
     infos = locks.list_locks(workspace)
+    unreadable = [
+        path.name for path in sorted(workspace.locks_dir.glob("*.lock"))
+        if locks.read_lock(workspace, path.stem) is None
+    ]
     stale: list[str] = []
     for info in infos:
         if not locks.pid_alive(info.pid):
             stale.append(f"{info.object}（pid={info.pid} 已结束，创建于 {info.created_at}）")
-    if not stale:
+    if not stale and not unreadable:
         return {
             "name": "locks",
             "status": "ok",
             "detail": f"{len(infos)} 个锁文件，未发现残留锁" if infos else "未发现残留锁",
             "suggestion": None,
         }
-    targets = "、".join(item.split("（")[0] for item in stale)
+    parts: list[str] = []
+    if stale:
+        parts.append("发现残留锁：" + "；".join(stale))
+    if unreadable:
+        parts.append("发现无法解析的锁文件：" + "、".join(unreadable))
+    targets = [item.split("（")[0] for item in stale]
+    targets += [name.removesuffix(".lock") for name in unreadable]
     return {
         "name": "locks",
         "status": "warn",
-        "detail": "发现残留锁：" + "；".join(stale) + "（不自动删除）",
+        "detail": "；".join(parts) + "（不自动删除）",
         "suggestion": (
-            f"确认持有进程已结束后执行 flow-core recover --release-lock <对象> --actor <id> --confirm"
-            f"（对象：{targets}）"
+            "确认持有进程已结束后执行 flow-core recover --release-lock <对象> "
+            "--actor <id> --confirm（对象：" + "、".join(targets) + "）"
         ),
     }

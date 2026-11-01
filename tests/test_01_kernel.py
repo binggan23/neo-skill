@@ -97,7 +97,9 @@ def test_object_locks_roll_back_partial_acquisition(space: ws.Workspace) -> None
     assert locks.lock_path(space, "PRD-002").exists()
 
 
-def test_lock_record_contains_required_fields(space: ws.Workspace) -> None:
+def test_lock_record_contains_required_fields(space: ws.Workspace, monkeypatch) -> None:
+    monkeypatch.setenv("NEO_SKILL_NOW", "2026-01-01T10:00:00+08:00")
+
     locks.acquire(space, "REQ-007", command="req.confirm", rules_version=3)
 
     info = locks.read_lock(space, "REQ-007")
@@ -107,7 +109,7 @@ def test_lock_record_contains_required_fields(space: ws.Workspace) -> None:
     assert info.pid > 0
     assert info.command == "req.confirm"
     assert info.rules_version == 3
-    assert info.created_at.endswith("+08:00") or info.created_at.endswith("Z") or "T" in info.created_at
+    assert info.created_at == "2026-01-01T10:00:00+08:00"
 
 
 # ---------------------------------------------------------------- 编号
@@ -201,9 +203,7 @@ def test_require_confirmation_needs_actor_and_flag() -> None:
     assert state.require_confirmation("alice", True, command="prd.approve") == "alice"
 
 
-def test_require_member_reports_missing_team_unknown_actor_and_role_mismatch(
-    space: ws.Workspace,
-) -> None:
+def test_require_member_reports_missing_team_unknown_actor_and_role_mismatch() -> None:
     with pytest.raises(FlowError) as excinfo:
         state.require_member(None, "alice", role=state.ROLE_REQUIREMENT_OWNER)
     assert excinfo.value.code == "TEAM_NOT_CONFIGURED"

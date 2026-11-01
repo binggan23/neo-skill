@@ -2,6 +2,18 @@
 
 状态定义只来自 `rules/flow.yaml`；本模块只做「读规则 → 校验 → 追加记录」，
 不硬编码任何状态值或跳转关系。
+
+人工决策命令的固定处理顺序（共享设计 §2.3，ticket 02–08 必须照此顺序实现）：
+
+1. 解析对象（不存在 → 对应的 NOT_FOUND 错误）；
+2. `require_confirmation` → `require_member`/`require_role_for`（团队/身份/职责，失败不改状态）；
+3. `check_transition`（`INVALID_TRANSITION`）；
+4. `locks.object_lock`（`LOCK_CONFLICT`）；
+5. `apply_transition` 追加 history/confirmations（**只改内存**）；
+6. `fsutil.atomic_write_yaml` 原子写；
+7. 退出 `with` 块释放锁。
+
+第 1–3 步都必须在拿到锁并写入之前完成，这样「失败无副作用」只需保证抛错前没有写。
 """
 
 from __future__ import annotations

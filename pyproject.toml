@@ -20,9 +20,6 @@ dev = ["pytest>=8.0,<10.0"]
 packages = ["flow_core", "flow_core.commands"]
 package-dir = { "flow_core" = "skills/neo-skill/runtime/flow_core" }
 
-[tool.setuptools.package-data]
-"flow_core" = []
-
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]

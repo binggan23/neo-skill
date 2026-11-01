@@ -272,3 +272,59 @@ def test_unknown_command_is_usage_error(project: Path) -> None:
     result = run_cli(project, "nonsense")
 
     assert result.code == 2
+
+
+def test_init_only_replaces_managed_agents_block(project: Path) -> None:
+    before = (
+        "# AGENTS.md\n\n"
+        "## 团队约定\n\n"
+        "提交前必须跑 lint 与类型检查。\n\n"
+        "<!-- neo-skill:begin -->\n"
+        "旧版本受管理内容\n"
+        "<!-- neo-skill:end -->\n\n"
+        "## 附录\n\n"
+        "这段在区块之后，必须保留。\n"
+    )
+    write(project / "AGENTS.md", before)
+
+    result = run_cli(project, "init")
+
+    assert result.code == 0
+    assert result.actions().get("AGENTS.md") == "updated"
+    after = read(project / "AGENTS.md")
+    assert "提交前必须跑 lint 与类型检查。" in after
+    assert "这段在区块之后，必须保留。" in after
+    assert "旧版本受管理内容" not in after
+    assert after.count("<!-- neo-skill:begin -->") == 1
+    assert after.count("<!-- neo-skill:end -->") == 1
+
+
+def test_init_appends_managed_block_when_agents_has_no_marker(project: Path) -> None:
+    write(project / "AGENTS.md", "# 团队 AGENTS\n\n只有团队自己的内容。\n")
+
+    assert run_cli(project, "init").code == 0
+
+    after = read(project / "AGENTS.md")
+    assert after.startswith("# 团队 AGENTS")
+    assert "只有团队自己的内容。" in after
+    assert "<!-- neo-skill:begin -->" in after
+
+
+def test_init_creates_missing_root_directory(tmp_path: Path) -> None:
+    nested = tmp_path / "a" / "b" / "proj"
+
+    result = run_cli(nested, "init", cwd=tmp_path)
+
+    assert result.code == 0
+    assert (nested / ".neo-skill/init-state.yaml").is_file()
+
+
+def test_init_conflict_plan_covers_business_doc_edit(project: Path) -> None:
+    assert run_cli(project, "init").code == 0
+    write(project / "02-definition/mvp-scope.md", "# MVP 范围\n\n我们自己的判断。\n")
+
+    result = run_cli(project, "init")
+
+    assert result.code == 0
+    assert result.actions().get("02-definition/mvp-scope.md") == "planned"
+    assert "我们自己的判断。" in read(project / "02-definition/mvp-scope.md")

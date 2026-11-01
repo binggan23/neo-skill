@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -45,12 +46,29 @@ def test_error_entries_carry_code_and_message(project: Path) -> None:
     assert result.json["success"] is False
 
 
-def test_global_flags_work_after_subcommand(project: Path) -> None:
-    before = run_cli(project, "init")
-    after = run_cli(project, "doctor")
+def test_global_flags_accepted_before_and_after_subcommand(project: Path) -> None:
+    import subprocess
+    import sys
 
-    assert before.json["command"] == "init"
-    assert after.json["command"] == "doctor"
+    def invoke(*argv: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(FLOW_CORE), *argv],
+            capture_output=True,
+            text=True,
+            cwd=str(project),
+            timeout=60,
+        )
+
+    # --json 在子命令前 / 后都应得到同一信封
+    before = invoke("--root", str(project), "--json", "doctor")
+    after = invoke("--root", str(project), "doctor", "--json")
+
+    assert before.returncode == after.returncode == 0
+    assert json.loads(before.stdout)["command"] == json.loads(after.stdout)["command"] == "doctor"
+
+    # 全局 --actor 在任何命令上都不应触发用法错误
+    with_actor = invoke("--root", str(project), "--actor", "alice", "--json", "doctor")
+    assert with_actor.returncode == 0
 
 
 def test_root_flag_omitted_uses_cwd_discovery(inited_project: Path) -> None:
@@ -120,3 +138,44 @@ def test_init_conflict_plan_keeps_exit_zero_and_lists_next_action(project: Path)
     assert result.json["success"] is True
     assert result.json["data"]["pending_conflicts"] == ["README.md"]
     assert result.json["next_actions"][0] == "flow-core init --apply-conflicts"
+
+
+def test_bare_invocation_is_usage_error(project: Path) -> None:
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, str(FLOW_CORE)],
+        capture_output=True,
+        text=True,
+        cwd=str(project),
+        timeout=60,
+    )
+
+    assert proc.returncode == 2
+    assert "init" in proc.stderr
+
+
+@pytest.mark.parametrize("group", ["req", "prd", "dev", "acceptance", "lint", "index", "recover"])
+def test_future_command_groups_are_not_registered_as_empty_shells(
+    project: Path, group: str
+) -> None:
+    """未实现的命令组不得注册：调用应是用法错误，而不是伪装成功。"""
+    result = run_cli(project, group, "list")
+
+    assert result.code == 2
+    assert result.json is None
+
+
+def test_doctor_reports_corrupt_lock_file_without_crashing(project: Path) -> None:
+    assert run_cli(project, "init").code == 0
+    write(project / ".neo-skill/locks/BROKEN.lock", "not json at all")
+
+    result = run_cli(project, "doctor")
+
+    assert result.code == 0
+    locks_check = result.check("locks")
+    assert locks_check["status"] == "warn"
+    assert "BROKEN" in locks_check["detail"]
+    # 不自动删除，也不因损坏文件崩溃
+    assert (project / ".neo-skill/locks/BROKEN.lock").is_file()

@@ -109,6 +109,12 @@ dev:
   spec_files: [spec.md, plan.md, tasks.md]
   # 主需求必须处于的状态才能作为 PRD 的开发依据（读 req.prd_states 为默认）
   require_req_states: [IN_PRD, DONE]
+  # 允许执行验证命令的 PRD 状态（ticket 06）：只有开发中才能产出验证证据
+  verify_states: [DEVELOPING]
+  # 建议的验证套件（供 Skill 选择；--suite 不做白名单限制，项目可自定义）
+  verify_suites: [unit, integration, static, e2e]
+  # 防伪造检查对比的源码/测试根目录（代码版本摘要也用它）
+  code_roots: [src, tests]
 
 # 受管理区块的目标文件（flow-core index 独占生成）
 managed_blocks:

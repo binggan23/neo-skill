@@ -202,6 +202,23 @@ hash 参与范围（共享设计 §6）：`prd.md` + 存在的 `test-cases.md`�
 可用起点由规则表决定：`DRAFT`/`IN_REVIEW` → `REJECTED`。拒绝是终态旁支，
 编号与历史保留，不回收编号（BR-019）。
 
+## 评审打回（→ CHANGES_REQUESTED，ticket 09 已实现）
+
+评审时发现问题但不该直接拒绝，用打回把 PRD 退回作者修改：
+
+```bash
+flow-core prd request-changes --id PRD-001 --actor alice --confirm \
+  --reason "场景 SC-RES-02 的验收标准不可测量，请改成可观察的阈值"
+```
+
+- 职责读 `gates.prd.request-changes`（`requirement_owner`）；缺 `--actor`/`--confirm` →
+  `CONFIRMATION_REQUIRED`，身份/职责不符 → `ACTOR_UNKNOWN`/`ROLE_MISMATCH`，都**零副作用**；
+- 只允许 `IN_REVIEW → CHANGES_REQUESTED`（规则表没有其它入边），`DRAFT` 上调用是
+  `INVALID_TRANSITION`；
+- 打回**不改** `content_hash`/`approved_by`：它是评审结论，不是基线变更。改完正文
+  （`CHANGES_REQUESTED` 属草稿期，`prd update` 可用）后重新 `prd submit-review`；
+- 打回原因写进 `history[].reason` 与 `confirmations[]`（`decision: prd.request-changes`）。
+
 ## 变更请求（CR）：改已批准 PRD 的唯一正路（ticket 04 已实现）
 
 已批准（`APPROVED` 及之后）的正文与锁定字段**只能**通过 CR 修改（SRS-FR-049/050、BR-012）：
@@ -263,6 +280,7 @@ flow-core prd baseline-status --id PRD-001   # hash + 失效标记 + 被取代�
 | `prd submit-review --id --actor A --confirm [--note T]` | 提交评审 | `DRAFT`/`CHANGES_REQUESTED → IN_REVIEW` |
 | `prd approve --id --actor A --confirm` | 需求负责人批准 + 锁定 hash | `IN_REVIEW → APPROVED` |
 | `prd reject --id --actor A --confirm --reason R` | 拒绝 | `→ REJECTED` |
+| `prd request-changes --id --actor A --confirm --reason R` | 评审打回（意见进 history） | `IN_REVIEW → CHANGES_REQUESTED` |
 | `prd cr create --id --actor A --confirm --reason R [--impact ...] [--body-file F]` | 登记变更 CR | 已建立基线的 PRD → `IN_REVIEW` + 基线失效 |
 | `prd cr approve --id --cr CR-001 --actor A --confirm` | 重新批准 | `IN_REVIEW → APPROVED`，版本 +1、新 hash |
 | `prd cr reject --id --cr CR-001 --actor A --confirm --reason R` | 拒绝变更 | 内容未变 → 回到 CR 前状态；已变 → 留 `IN_REVIEW` |

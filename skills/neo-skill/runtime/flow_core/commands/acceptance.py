@@ -197,7 +197,6 @@ def _record(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     acceptance.require_state(record, acceptance.RECORD_STATES, command=command)
     data = acceptance.require_prepared(workspace, record)
 
-    gate = _gate_rule(rules, APPROVE_GATE)
     team = state.require_team(workspace, object=record.id)
     actor = _actor(args)
     if not actor:
@@ -428,13 +427,14 @@ def _not_all_passed(command: str, workspace: Workspace, rules: Rules,
                if item.get("conclusion") == acceptance.CONCLUSION_BLOCKED]
     failed = [item for item in pending
               if item.get("conclusion") == acceptance.CONCLUSION_FAIL]
-    result.fail(
-        "AC_NOT_ALL_PASSED",
-        f"{record.id} 还有 {len(pending)} 条 AC 未通过：{detail}；只有全部通过才允许验收通过",
-        object=record.id,
-        suggestion="逐条补齐结论与证据；有 fail/blocked 时需要退回开发或标记有条件通过，"
-                   "不得直接验收通过（BR-013）",
-    )
+    if pending:
+        result.fail(
+            "AC_NOT_ALL_PASSED",
+            f"{record.id} 还有 {len(pending)} 条 AC 未通过：{detail}；只有全部通过才允许验收通过",
+            object=record.id,
+            suggestion="逐条补齐结论与证据；有 fail/blocked 时需要退回开发或标记有条件通过，"
+                       "不得直接验收通过（BR-013）",
+        )
     for item in pending:
         result.next_actions.append(
             f"{FLOW_CORE} acceptance record --prd {record.id} --ac {item.get('ac')} "

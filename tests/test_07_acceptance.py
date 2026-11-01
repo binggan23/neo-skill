@@ -429,6 +429,8 @@ def test_conditional_pass_does_not_reach_accepted(prepared: Path) -> None:
     # 有条件通过之后不能靠 approve 直接进 ACCEPTED（遗留问题未处理）
     blocked = approve(prepared, expect=1)
     assert "ACCEPTANCE_CONDITIONAL" in error_codes(blocked)
+    # 全部 AC 已 pass，因此不应再报「AC 未通过」
+    assert "AC_NOT_ALL_PASSED" not in error_codes(blocked)
     assert "ACCEPTED" not in prd_metadata_text(prepared)
 
 

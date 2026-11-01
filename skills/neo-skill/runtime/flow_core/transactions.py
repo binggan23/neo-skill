@@ -109,6 +109,8 @@ class Transaction:
     actor: str | None = None
     error: str | None = None
     directory: Path | None = None
+    # `begin()`/`load()` 绑定的工作区，使 `commit(tx)` 这种单参调用也能工作
+    workspace: Workspace | None = field(default=None, repr=False, compare=False)
 
     # ---- 读写 ----
     def to_dict(self) -> dict[str, Any]:
@@ -200,6 +202,7 @@ def begin(workspace: Workspace, object_id: str,
     for op in tx.ops:
         fsutil.atomic_write_text(directory / op.staged, op.content)
     tx.directory = directory
+    tx.workspace = workspace
     _write_tx(workspace, tx)
     return tx
 
@@ -227,11 +230,14 @@ def _normalize_op(workspace: Workspace, raw: dict[str, Any] | Op) -> Op:
 # --------------------------------------------------------------------------
 # 提交
 # --------------------------------------------------------------------------
-def commit(workspace: Workspace, tx: Transaction) -> Transaction:
+def commit(workspace: Workspace | Transaction, tx: Transaction | None = None) -> Transaction:
     """`PREPARED → COMMITTING → COMMITTED`：按 order 逐项原子替换。
+
+    支持 `commit(workspace, tx)` 与 `commit(tx)`（后者用 `begin()`/`load()` 绑定的工作区）。
 
     任一步失败：state 置 `FAILED`（保留 tx 目录、暂存内容与错误），抛 `FlowError`。
     """
+    workspace, tx = _resolve(workspace, tx)
     _set_state(workspace, tx, STATE_COMMITTING)
     try:
         for op in sorted(tx.ops, key=lambda item: item.order):
@@ -286,7 +292,7 @@ def _inject_failure(op: Op) -> bool:
 # --------------------------------------------------------------------------
 # 恢复
 # --------------------------------------------------------------------------
-def recover_one(workspace: Workspace, tx: Transaction) -> Transaction:
+def recover_one(workspace: Workspace | Transaction, tx: Transaction | None = None) -> Transaction:
     """重新比对基线 → `COMMITTING` → 替换 → `COMMITTED`。
 
     三态判定（每个目标）：
@@ -296,6 +302,7 @@ def recover_one(workspace: Workspace, tx: Transaction) -> Transaction:
     - `conflict`：其它情况（含被新建/删除）→ `BASELINE_CONFLICT`，**不写任何文件**，
       事务状态保持不变，由人工决定怎么处理（不得静默覆盖）。
     """
+    workspace, tx = _resolve(workspace, tx)
     if tx.state == STATE_COMMITTED:
         return tx
     conflicts = baseline_conflicts(workspace, tx)
@@ -378,7 +385,9 @@ def load(workspace: Workspace, tx_id: str) -> Transaction:
             suggestion=f"用 {FLOW_CORE} recover list 查看未完成的事务",
             next_actions=[f"{FLOW_CORE} recover list"],
         )
-    return _read_tx(directory)
+    tx = _read_tx(directory)
+    tx.workspace = workspace
+    return tx
 
 
 def list_transactions(workspace: Workspace) -> list[Transaction]:
@@ -390,7 +399,9 @@ def list_transactions(workspace: Workspace) -> list[Transaction]:
         if not path.is_dir() or not (path / TX_FILE).is_file():
             continue
         try:
-            found.append(_read_tx(path))
+            tx = _read_tx(path)
+            tx.workspace = workspace
+            found.append(tx)
         except FlowError:  # 损坏的事务记录不影响清单（由 recover list 的 error 字段报告）
             continue
     return found
@@ -451,6 +462,25 @@ def _set_state(workspace: Workspace, tx: Transaction, state: str) -> None:
     tx.state = state
     tx.updated_at = fsutil.now_iso()
     _write_tx(workspace, tx)
+
+
+def _resolve(workspace: Workspace | Transaction,
+             tx: Transaction | None) -> tuple[Workspace, Transaction]:
+    """兼容 `f(ws, tx)` 与单参 `f(tx)` 两种调用形状。"""
+    if tx is None:
+        if not isinstance(workspace, Transaction):
+            raise FlowError("TX_INVALID", "调用事务函数时必须给出事务对象")
+        tx = workspace
+        if tx.workspace is None:
+            raise FlowError(
+                "TX_INVALID",
+                f"事务 {tx.id} 没有绑定工作区，请用事务(工作区, tx) 形式调用",
+                object=tx.id,
+            )
+        return tx.workspace, tx
+    if isinstance(workspace, Transaction):  # pragma: no cover - 参数写反
+        raise FlowError("TX_INVALID", "事务函数的第一个参数必须是工作区")
+    return workspace, tx
 
 
 def _error_text(exc: BaseException) -> str:

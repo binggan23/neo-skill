@@ -62,6 +62,13 @@ def item_path(project: Path, name: str = ITEM_1) -> Path:
 
 
 # ------------------------------------------------------------------ 草稿创建
+def test_missing_subcommand_is_usage_error(ready: Path) -> None:
+    result = run_cli(ready, "req")
+
+    assert result.code == 2
+    assert result.json is None
+
+
 def test_create_allocates_id_and_writes_new_draft(ready: Path) -> None:
     result = create(ready, "--source", "客户访谈")
 

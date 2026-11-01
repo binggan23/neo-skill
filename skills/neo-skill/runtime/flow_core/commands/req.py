@@ -39,7 +39,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     from ..cli import global_options_parser
 
     parents = [global_options_parser()]
-    subparsers = parser.add_subparsers(dest="req_command", metavar="<子命令>")
+    # required=True：漏子命令属于参数用法错误（退出码 2），不是业务失败
+    subparsers = parser.add_subparsers(dest="req_command", metavar="<子命令>", required=True)
 
     create = subparsers.add_parser("create", parents=parents,
                                    help="创建 NEW 需求草稿并分配编号")
@@ -216,9 +217,10 @@ def _ensure_slug_free(workspace: Workspace, slug: str) -> None:
     if not directory.is_dir():
         return
     for path in sorted(directory.glob(f"*-{slug}.md")):
+        owner = "-".join(path.stem.split("-")[:2])
         raise FlowError(
             "SLUG_CONFLICT",
-            f"slug `{slug}` 已被 {path.stem.rsplit('-', 1)[0]} 使用",
+            f"slug `{slug}` 已被 {owner} 使用",
             object=slug,
             suggestion="slug 创建后不改、也不允许重复；换一个能区分的标题或显式 --slug",
         )

@@ -5,9 +5,11 @@
 本模块只做纯读写与判定，**不**做状态跳转、不取锁、不写 history——
 人工决策的顺序由 `state.py` 与 `commands/req.py` 负责。
 
-状态值一律来自 `rules/flow.yaml`（`rules.initial_state("req")`、
-`rules.transitions("req")`）；本模块只额外接受一个「草稿态」集合：
-优先读 `rules.data["req"]["draft_states"]`，规则未声明时回退 `DRAFT_STATES`。
+状态值一律来自 `rules/flow.yaml`（`rules.initial_state("req")`、`rules.transitions("req")`）。
+本模块额外读取规则里的两个状态集合，避免在代码里硬编码「哪些状态算草稿」：
+
+- `rules.data["req"]["draft_states"]`（默认 `DRAFT_STATES`）：正文与字段可改；
+- `rules.data["req"]["prd_states"]`（默认 `IN_PRD`/`DONE`）：改期必须走 PRD 变更（FR-035）。
 """
 
 from __future__ import annotations
@@ -103,7 +105,7 @@ def validate_slug(raw: str) -> str:
 
 
 def slugify(title: str) -> str:
-    """把标题转成稳定 slug；纯中文标题返回空串（由调用方回退到编号）。"""
+    """把标题转成稳定 slug；纯中文标题返回空串（由调用方回退到模块名）。"""
     text = str(title or "").lower()
     text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
     text = re.sub(r"-{2,}", "-", text)

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -65,7 +66,11 @@ def test_closeout_syncs_everything(inited_project: Path):
     # PRD 保持 ACCEPTED，验收结论不变，closeout 记录完整
     after = prd_meta(inited_project)
     assert after["status"] == "ACCEPTED"
-    assert after["acceptance"] == before["acceptance"]
+    acceptance_after = dict(after["acceptance"])
+    acceptance_before = dict(before["acceptance"])
+    acceptance_after.pop("closeout")
+    acceptance_before.pop("closeout")
+    assert acceptance_after == acceptance_before, "收尾不得改动人工验收结论"
     assert after["closeout"]["state"] == "COMMITTED"
     assert after["closeout"]["tx"].startswith("TX-")
     assert after["closeout"]["by"] == "alice"
@@ -189,8 +194,9 @@ def test_partial_failure_keeps_acceptance_and_blocks_done(inited_project: Path):
 def test_partial_failure_before_scenario_and_index(inited_project: Path):
     h8.accepted(inited_project)
     result = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,
-                         env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "3"})
+                         env={**ENV, "NEO_SKILL_FAIL_TX_STEP": "2"})
     assert "CLOSEOUT_INCOMPLETE" in h8.error_codes(result)
+    assert h8.feature_doc(inited_project).is_file(), "第 1 步已经写入"
     assert h8.scenario_rows(inited_project) == {}, "未写入的目标不得出现半成品"
     assert "PRD-001" not in (h8.managed_body(
         h8.index_text(inited_project, "04-prds/index.md")) or "")
@@ -417,11 +423,12 @@ def test_closeout_refuses_modified_index_block(inited_project: Path):
 # 残留锁
 # --------------------------------------------------------------------------
 def _write_lock(project: Path, object_id: str, pid: int) -> Path:
+    """构造一个残留锁（锁文件格式是 JSON，见共享设计 §7）。"""
     path = project / ".neo-skill" / "locks" / f"{object_id}.lock"
-    write(path, yaml.safe_dump({
+    write(path, json.dumps({
         "object": object_id, "pid": pid, "created_at": "2026-03-01T10:00:00+08:00",
         "command": "prd.approve", "rules_version": 1,
-    }, sort_keys=False, allow_unicode=True))
+    }, ensure_ascii=False, indent=2))
     return path
 
 

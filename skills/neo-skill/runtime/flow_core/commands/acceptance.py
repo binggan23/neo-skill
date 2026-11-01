@@ -28,13 +28,14 @@ from ..rules import Rules
 from ..workspace import Workspace
 
 NAME = "acceptance"
-HELP = "人工验收：Demo 材料、逐条 AC 结论、建议与确认分离、验收报告（收尾同步见后续命令）"
+HELP = "人工验收：Demo 材料、逐条 AC 结论、建议与确认分离、验收报告（已含收尾同步）"
 
 FLOW_CORE = "flow-core"
 ACTOR_PLACEHOLDER = "<验收人>"
 DECISION_ROLE = "requirement_owner"
 APPROVE_GATE = "acceptance.approve"
 REJECT_GATE = "acceptance.reject"
+CLOSEOUT_COMMANDS = ("closeout", "closeout-status")
 
 
 # --------------------------------------------------------------------------
@@ -95,9 +96,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                                    help="报告逐条 AC 结论、是否全部通过、验收结论是否失效")
     status.add_argument("--prd", default=None, help="PRD 编号")
 
+    # 收尾同步（ticket 08）：参数注册与实现在 commands/closeout.py。
+    from . import closeout as closeout_command
+
+    closeout_command.add_arguments(subparsers, parents)
+
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     sub = getattr(args, "acceptance_command", None)
+    if sub in CLOSEOUT_COMMANDS:  # ticket 08：收尾子命令自己路由
+        from . import closeout as closeout_command
+
+        return closeout_command.run(workspace, rules, args)
     handler = _HANDLERS.get(sub)
     if handler is None:
         raise FlowError(
@@ -408,8 +418,8 @@ def _approve(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Re
         "验收通过不等于需求完成：主需求仍未 DONE，"
         "还需收尾同步（功能现状、主需求、场景、索引）")
     result.next_actions.extend([
-        "下一步：收尾同步（ticket 08 的 acceptance closeout）—— 同步功能现状、主需求、场景与索引；"
-        "收尾未完成前主需求尚未 DONE",
+        f"下一步：收尾同步 {FLOW_CORE} acceptance closeout --prd {record.id} --actor {actor}"
+        " —— 同步功能现状、主需求、场景与索引；收尾未完成前主需求尚未 DONE",
         f"{FLOW_CORE} acceptance status --prd {record.id}",
     ])
     return result
@@ -652,7 +662,8 @@ def _status(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
             f"已由 {status.acceptance.get('approved_by')} 于 "
             f"{status.acceptance.get('approved_at')} 确认通过")
         result.next_actions.append(
-            "下一步：收尾同步（ticket 08 的 acceptance closeout）；主需求尚未 DONE")
+            f"下一步：收尾同步 {FLOW_CORE} acceptance closeout --prd {record.id} --actor "
+            f"{_suggest_actor(workspace, rules)} —— 收尾完成前主需求尚未 DONE")
     if pending:
         missing = "、".join(str(item.get("ac")) for item in pending)
         result.notes.append(f"未通过/未记录：{missing}")

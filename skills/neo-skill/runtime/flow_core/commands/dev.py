@@ -707,6 +707,40 @@ def _submit_acceptance(workspace: Workspace, rules: Rules, args: argparse.Namesp
             f"{item.get('ac')}（{item.get('result')}）" for item in pending)
         return _incomplete(workspace, record, pending, detail, status)
 
+    data = verification.load_state(workspace, record)
+    verification.sync_acs(data, record)
+    findings = verification.guard_findings(workspace, record, data)
+    allow_skip = bool(getattr(args, "allow_skip", False))
+    reason = _clean(getattr(args, "reason", None))
+    if allow_skip:
+        if not reason:
+            raise FlowError(
+                "REASON_REQUIRED",
+                "--allow-skip 必须同时给 --reason（豁免要留可审计理由）",
+                object=record.id,
+                suggestion='例如 --reason "该用例依赖外部设备，已由项目负责人登记豁免"',
+            )
+        verification.apply_waiver(workspace, record, data, findings, reason)
+    remaining = verification.unwaived(findings)
+    if remaining:
+        result = Result(command=command)
+        for item in remaining:
+            result.fail(item.code, item.message, object=item.object, suggestion=item.suggestion)
+        result.fail(
+            "GUARD_FAILED",
+            "防伪造检查未通过，不得提交验收：" + "、".join(item.code for item in remaining),
+            object=record.id,
+            suggestion="恢复被删除/弱化的用例与断言，或使用 --allow-skip --reason 显式登记豁免",
+        )
+        return result
+    guard = data.get("guard") if isinstance(data.get("guard"), dict) else {}
+    guard.update({
+        "checked_at": fsutil.now_iso(),
+        "ok": True,
+        "findings": [item.to_dict() for item in findings],
+    })
+    data["guard"] = guard
+
     gate = _gate_rule(rules, ACCEPTANCE_SUBMIT_GATE)
     team = state.require_team(workspace, object=record.id)
     # 提交验收是机械状态（BR-013 只限制「判定验收通过」），但仍要登记职责供审计
@@ -715,8 +749,6 @@ def _submit_acceptance(workspace: Workspace, rules: Rules, args: argparse.Namesp
     target = str(gate.get("to") or verification.ACCEPTANCE_SUBMIT_STATE)
     state.check_transition(rules, "prd", record.status, target, object=record.id)
 
-    data = verification.load_state(workspace, record)
-    verification.sync_acs(data, record)
     data["repair_limit"] = verification.repair_limit(workspace, rules)
     submission = verification.build_submission(workspace, record, data, actor,
                                               roots=verification.code_roots(rules))

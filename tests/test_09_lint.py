@@ -273,7 +273,8 @@ def test_baseline_invalidated_by_open_cr(project: Path):
     initialized(project)
     h7.approved(project)
     created = run_cli(project, "prd", "cr", "create", "--id", PRD_ID, "--actor", "alice",
-                      "--confirm", "--reason", "客户要求增加 CSV 导出", env=ENV)
+                      "--confirm", "--reason", "客户要求增加 CSV 导出",
+                      "--impact", "spec=true,tasks=false,tests=true,design=false", env=ENV)
     assert created.code == 0, created
     result = lint(project)
     assert result.code == 1, result
@@ -285,7 +286,8 @@ def test_baseline_invalidated_even_without_marker(project: Path):
     initialized(project)
     h7.approved(project)
     created = run_cli(project, "prd", "cr", "create", "--id", PRD_ID, "--actor", "alice",
-                      "--confirm", "--reason", "客户要求增加 CSV 导出", env=ENV)
+                      "--confirm", "--reason", "客户要求增加 CSV 导出",
+                      "--impact", "spec=true,tasks=false,tests=true,design=false", env=ENV)
     assert created.code == 0, created
     meta = yaml.safe_load(read(prd_dir(project) / "metadata.yaml"))
     meta.pop("baseline_invalidated", None)          # 抹掉标记，只剩未决 CR

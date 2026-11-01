@@ -246,9 +246,13 @@ def _record(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
         "stale": False,
     })
     data["updated_at"] = fsutil.now_iso()
-    # 人工重新记录任何结论都意味着清单仍在处理中：上一次「有条件通过」的决定随之失效，
-    # 但遗留问题保留（仍写在 checklist.yaml 与报告里），处理后可以再次请求确认。
-    data["conditional"] = False
+    # 有条件通过只有在其遗留 AC 全部重新记录为 pass 后才解除；只重录其中一条
+    # 不足以清除标志（SRS-FR-073）。遗留文本保留，供报告与审计追溯。
+    all_pass = bool(data.get("items")) and all(
+        entry.get("conclusion") == acceptance.CONCLUSION_PASS
+        for entry in data.get("items") or []
+    )
+    data["conditional"] = bool(data.get("conditional")) and not all_pass
 
     result = Result(command=command)
     with locks.object_lock(workspace, record.id, command=command, rules_version=rules.version):

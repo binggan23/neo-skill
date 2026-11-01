@@ -42,7 +42,8 @@ def baseline_status(project: Path, prd_id: str = "PRD-001"):
 def cr_create(project: Path, *extra: str, actor: str = "alice", expect: int = 0,
               reason: str = CR_REASON):
     args = ["prd", "cr", "create", "--id", "PRD-001", "--actor", actor, "--confirm",
-            "--reason", reason, *extra]
+            "--reason", reason,
+            "--impact", "spec=true,tasks=false,tests=false,design=false", *extra]
     result = run_cli(project, *args, env=ENV)
     assert result.code == expect, result
     return result

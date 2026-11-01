@@ -238,19 +238,25 @@ def mark_downstream(workspace: Workspace, record: PrdRecord, *, cr_id: str,
         fsutil.atomic_write_yaml(path, payload)
         marked.append(workspace.rel(path))
 
-    report = acceptance_dir(workspace, record) / ACCEPTANCE_REPORT
-    if report.is_file():
-        text = fsutil.read_text(report)
-        block = _annotation(cr_id=cr_id, at=at, actor=actor, prd_hash=prd_hash,
-                            version=record.version)
+    downstream = [
+        specs / "plan.md",
+        specs / "tasks.md",
+        acceptance_dir(workspace, record) / ACCEPTANCE_REPORT,
+    ]
+    block = _annotation(cr_id=cr_id, at=at, actor=actor, prd_hash=prd_hash,
+                        version=record.version)
+    for path in downstream:
+        if not path.is_file():
+            continue
+        text = fsutil.read_text(path)
         if MARKER_BEGIN in text:  # 幂等：替换标记块，不重复追加
             head = text.split(MARKER_BEGIN)[0].rstrip("\n")
             tail = text.split(MARKER_END, 1)[1].lstrip("\n")
             text = head + "\n\n" + block + ("\n" + tail if tail else "")
         else:
             text = text.rstrip("\n") + "\n\n" + block
-        fsutil.atomic_write_text(report, text)
-        marked.append(workspace.rel(report))
+        fsutil.atomic_write_text(path, text)
+        marked.append(workspace.rel(path))
     return marked
 
 

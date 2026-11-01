@@ -311,7 +311,7 @@ def test_validate_warns_about_ambiguous_words_without_failing(inited_project: Pa
     assert "AMBIGUOUS_WORD" in issue_codes(result, "warning")
 
 
-def test_validate_warns_about_untestable_ac_without_failing(inited_project: Path) -> None:
+def test_validate_rejects_untestable_ac(inited_project: Path) -> None:
     planned_req(inited_project, title="简历批量解析", slug="batch-parse")
     create_prd(inited_project, scenarios="SC-RES-01,SC-RES-02")
     body = VALID_PRD.replace(
@@ -325,8 +325,8 @@ def test_validate_warns_about_untestable_ac_without_failing(inited_project: Path
 
     result = run_cli(inited_project, "prd", "validate", "--id", "PRD-001")
 
-    assert result.code == 0, result
-    assert "TESTABILITY_WEAK" in issue_codes(result, "warning")
+    assert result.code == 1, result
+    assert "TESTABILITY_WEAK" in issue_codes(result, "error")
 
 
 def test_validate_warns_about_term_inconsistency_with_glossary(inited_project: Path) -> None:

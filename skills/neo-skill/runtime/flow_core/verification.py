@@ -322,8 +322,40 @@ def _iter_code_files(workspace: Workspace,
     return parts
 
 
+def _git_dirty(workspace: Workspace, roots: Iterable[str] = CODE_ROOTS) -> bool:
+    """代码根目录（`src/`、`tests/`…）是否有未提交改动。
+
+    只看代码根：验证证据（`06-specs/`）、PRD（`04-prds/`）等流程产物写入不应算作
+    「代码变化」而让验收失效（SRS-FR-074 说的是「验收范围内代码变化」）。
+    `git status --porcelain` 限制到这些路径；命令不可用时保守视为「脏」。
+    """
+    paths = [str(root) for root in roots]
+    if not paths:
+        return False
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--", *paths],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if proc.returncode != 0:
+        return True
+    return bool((proc.stdout or "").strip())
+
+
 def code_version(workspace: Workspace, roots: Iterable[str] = CODE_ROOTS) -> str:
-    """Git 项目记 `git:<sha>`；非 Git 项目记 `src/`+`tests/` 内容摘要（SRS-FR-068）。"""
+    """Git 项目记 HEAD；有未提交改动时额外附工作区摘要。
+
+    - 干净：`git:<sha>`
+    - 有未提交改动（暂存/未暂存/未跟踪）：`git:<sha>+dirty:<摘要>`
+    - 非 Git 项目：`src/`+`tests/` 内容摘要
+
+    旧记录只有 `git:<sha>`，按干净工作区处理，保持向后可比（SRS-FR-074）。
+    """
     try:
         proc = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -337,7 +369,11 @@ def code_version(workspace: Workspace, roots: Iterable[str] = CODE_ROOTS) -> str
     if proc is not None and proc.returncode == 0:
         sha = (proc.stdout or "").strip()
         if sha:
-            return f"git:{sha}"
+            version = f"git:{sha}"
+            if _git_dirty(workspace, roots):
+                digest = hashing.digest_of(_iter_code_files(workspace, roots))
+                return f"{version}+dirty:{digest}"
+            return version
     return hashing.digest_of(_iter_code_files(workspace, roots))
 
 

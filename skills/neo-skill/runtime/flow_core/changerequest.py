@@ -71,13 +71,11 @@ def format_id(number: int, rules: Rules) -> str:
 def parse_impact(raw: Iterable[str] | str | None) -> dict[str, Any]:
     """解析 `--impact spec=true,tasks=false,version=v0.2.0`。
 
-    未知键 → `INVALID_IMPACT`（不写任何文件）。布尔项缺省 False，`version` 缺省 None。
+    未知键 → `INVALID_IMPACT`（不写任何文件）。四项布尔影响面必须全部显式给出，
+    缺项或完全缺省 → `IMPACT_REQUIRED`；`version` 可选，但给出时必须为 vX.Y.Z。
     """
-    impact: dict[str, Any] = {key: False for key in BOOLEAN_IMPACT_KEYS}
-    impact["version"] = None
-    if raw is None:
-        return impact
-    items = [raw] if isinstance(raw, str) else list(raw)
+    impact: dict[str, Any] = {}
+    items = [raw] if isinstance(raw, str) else list(raw or [])
     for item in items:
         for part in str(item).split(","):
             text = part.strip()
@@ -105,6 +103,14 @@ def parse_impact(raw: Iterable[str] | str | None) -> dict[str, Any]:
                 impact["version"] = validate_release(value) if value else None
             else:
                 impact[key] = _as_bool(value, key)
+    missing = [key for key in BOOLEAN_IMPACT_KEYS if key not in impact]
+    if missing:
+        raise FlowError(
+            "IMPACT_REQUIRED",
+            "缺少必填的 CR 影响面：" + "、".join(missing),
+            object=missing,
+            suggestion="用 --impact 显式给出 spec/tasks/tests/design 四项 true/false；version 可选",
+        )
     return impact
 
 

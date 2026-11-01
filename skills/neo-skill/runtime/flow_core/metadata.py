@@ -495,7 +495,7 @@ AMBIGUOUS_WORDS: tuple[str, ...] = (
 
 _AC_LINE_RE = re.compile(r"^\s*[-*+]\s*(AC-[A-Za-z0-9][A-Za-z0-9-]*)")
 _SCENARIO_HEADING_RE = re.compile(r"^###\s+(SC-[A-Za-z0-9]+-\d{1,4})\b")
-_GIVEN = ("given", "假设", "假定", "前置条件", "前置")
+_GIVEN = ("given", "假设", "假定", "给定", "假如", "前置条件", "前置")
 _WHEN = ("when", "当", "触发")
 _THEN = ("then", "则", "结果", "预期")
 
@@ -673,7 +673,7 @@ def _check_scenarios(record: PrdRecord, sections: dict[str, str],
                 continue
             issues.append(issue(
                 "TESTABILITY_WEAK",
-                severity=SEVERITY_WARNING,
+                severity=SEVERITY_ERROR,
                 object=ac_id,
                 message=f"{ac_id} 缺少 {'/'.join(missing)}，无法验证",
                 suggestion="把该 AC 改写成 Given（前置）/ When（动作）/ Then（可观察结果）三段式",
@@ -727,14 +727,53 @@ def _ac_blocks(block: str) -> list[tuple[str, str]]:
     return items
 
 
+_GWT_TOKEN_RE = re.compile(r"[\w\u3400-\u9fff]+", re.UNICODE)
+
+
+def _label_pattern(tokens: tuple[str, ...]) -> str:
+    """构造标签正则。
+
+    ASCII 标签（given/when/then）要求前后是词边界，避免 because/otherwise 误命中；
+    中文标签（假设/当/则…）允许后面直接接内容（中文没有词间空格），
+    但仍要求前面是边界，避免「适当」「结果」在普通句子里被当成标签。
+    """
+    parts: list[str] = []
+    for token in tokens:
+        if token.isascii():
+            parts.append(rf"\b{re.escape(token)}\b")
+        else:
+            parts.append(rf"(?:^|[\s:：*+\-、，,])({re.escape(token)})")
+    return "|".join(parts)
+
+
+def _gwt_content(text: str, tokens: tuple[str, ...]) -> str:
+    """返回标签之后、下一个 GWT 标签之前的**实质**内容（不是纯标签/标点）。"""
+    match = re.search(_label_pattern(tokens), text, re.IGNORECASE | re.MULTILINE)
+    if not match:
+        return ""
+    rest = text[match.end():]
+    # 去掉标签后的分隔符（冒号、破折号、空白等），只留正文。
+    rest = re.sub(r"^[\s:：\-—、，,]*", "", rest)
+    all_tokens = _GIVEN + _WHEN + _THEN
+    next_label = re.search(_label_pattern(all_tokens), rest,
+                           re.IGNORECASE | re.MULTILINE)
+    if next_label:
+        rest = rest[:next_label.start()]
+    # 内容不能只是标点、项目符号或另一个 GWT 标签本身。
+    words = _GWT_TOKEN_RE.findall(rest)
+    kept = " ".join(word for word in words
+                    if word.lower() not in all_tokens)
+    return kept.strip()
+
+
 def _missing_gwt(ac_block: str) -> list[str]:
-    text = _strip_comments(ac_block).lower()
+    text = _strip_comments(ac_block)
     missing: list[str] = []
-    if not any(token in text for token in _GIVEN):
+    if not _gwt_content(text, _GIVEN):
         missing.append("Given")
-    if not any(token in text for token in _WHEN):
+    if not _gwt_content(text, _WHEN):
         missing.append("When")
-    if not any(token in text for token in _THEN):
+    if not _gwt_content(text, _THEN):
         missing.append("Then")
     return missing
 

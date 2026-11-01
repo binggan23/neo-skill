@@ -130,7 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("ERROR: 已中断", file=sys.stderr)
         return EXIT_FAIL
     except Exception as exc:  # 未预期异常也必须走信封，且不改业务状态
-        traceback.print_exc()
+        print(redact.redact_text(traceback.format_exc()), end="", file=sys.stderr)
         result = Result(command=command)
         result.fail(
             "INTERNAL_ERROR",

@@ -580,6 +580,18 @@ def test_submit_acceptance_failure_has_no_side_effects(developing: Path) -> None
     assert not list((developing / ".neo-skill/locks").glob("*.lock"))
 
 
+def test_submit_acceptance_rejects_unknown_actor_without_side_effects(developing: Path) -> None:
+    _verify_all_pass(developing)
+    before_meta = read(prd_dir(developing) / "metadata.yaml")
+
+    result = run(developing, "dev", "submit-acceptance", "--prd", PRD_ID,
+                 "--actor", "nobody", expect=1)
+
+    assert "ACTOR_UNKNOWN" in error_codes(result)
+    assert read(prd_dir(developing) / "metadata.yaml") == before_meta
+    assert not list((developing / ".neo-skill/locks").glob("*.lock"))
+
+
 def test_submit_acceptance_detects_code_changed_after_verification(developing: Path) -> None:
     _verify_all_pass(developing)
     write(developing / "src/app.py", "print('late change')\n")

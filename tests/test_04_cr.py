@@ -201,14 +201,63 @@ def test_create_cr_moves_approved_prd_to_in_review(approved: Path) -> None:
     assert meta["history"][-1]["from"] == "APPROVED"
 
 
+def confirm_constitution(project: Path) -> None:
+    """constitution 确认是 ticket 05 的 dev 门禁前置；这里只改 confirmed 标记。"""
+    path = project / ".specify/constitution.md"
+    write(path, read(path).replace("confirmed: false", "confirmed: true"))
+
+
+def start_dev(project: Path, *, actor: str = "carol") -> None:
+    confirm_constitution(project)
+    result = run_cli(project, "dev", "start", "--prd", "PRD-001", "--actor", actor,
+                     "--confirm", env=ENV)
+    assert result.code == 0, result
+
+
 def test_cr_from_developing_returns_prd_to_in_review(approved: Path) -> None:
-    # 直接改状态：DEVELOPING 只能由 ticket 05 的 dev 门禁到达，这里只构造起点。
-    patch_meta(approved, status="DEVELOPING")
+    start_dev(approved)
+    assert prd_meta(approved)["status"] == "DEVELOPING"
 
     cr_create(approved)
 
     assert prd_meta(approved)["status"] == "IN_REVIEW"
     assert prd_meta(approved)["baseline_invalidated"]["previous_status"] == "DEVELOPING"
+
+
+def test_cr_blocks_development_until_reapproved(approved: Path) -> None:
+    start_dev(approved)
+    cr_create(approved)
+
+    status = run_cli(approved, "dev", "status", "--prd", "PRD-001")
+
+    assert status.code == 0, status
+    assert status.json["data"]["baseline_valid"] is False
+    again = run_cli(approved, "dev", "start", "--prd", "PRD-001", "--actor", "carol",
+                    "--confirm", env=ENV)
+    assert again.code == 1
+    assert "BASELINE_INVALID" in error_codes(again)
+
+
+def test_reapproved_cr_lets_development_resume(approved: Path) -> None:
+    start_dev(approved)
+    cr_create(approved)
+    edited = prd_text(approved).replace("5 分钟内", "8 分钟内")
+    write(approved / "prd-v2.md", edited)
+    assert run_cli(approved, "prd", "update", "--id", "PRD-001", "--body-file",
+                   str(approved / "prd-v2.md"), env=ENV).code == 0
+
+    approved_again = run_cli(approved, "prd", "cr", "approve", "--id", "PRD-001",
+                             "--cr", "CR-001", "--actor", "alice", "--confirm", env=ENV)
+    resumed = run_cli(approved, "dev", "start", "--prd", "PRD-001", "--actor", "carol",
+                      "--confirm", env=ENV)
+
+    assert approved_again.code == 0, approved_again
+    assert resumed.code == 0, resumed
+    assert resumed.json["data"]["prd"]["status"] == "DEVELOPING"
+    marker = yaml.safe_load(read(
+        approved / "06-specs/resume/PRD-001-batch-parse/.baseline.yaml"))
+    assert marker["baseline_valid"] is True
+    assert marker["baseline_version"] == 2
 
 
 def test_baseline_invalid_after_cr_and_old_approval_not_reusable(approved: Path) -> None:

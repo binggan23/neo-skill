@@ -431,6 +431,35 @@ def test_closeout_confirm_overrides_modified_block(inited_project: Path):
     assert req_meta(inited_project)["status"] == "DONE"
 
 
+def test_closeout_refuses_modified_scenario_block(inited_project: Path):
+    """模块 README 的场景区块也是受管理区块：人工改过就要 --confirm 才覆盖。"""
+    readme = h8.module_readme(inited_project)
+    write(readme, (
+        "# resume 模块\n\n人工说明：本模块由招聘团队维护。\n\n"
+        "## 场景状态\n\n"
+        "<!-- neo-skill:managed:begin fingerprint=deadbeef -->\n"
+        "| 场景 | 状态 | 主 PRD | 说明 |\n"
+        "| --- | --- | --- | --- |\n"
+        "| SC-RES-01 | 开发中 | PRD-001 | 人工填的状态 |\n"
+        "<!-- neo-skill:managed:end -->\n"
+    ))
+    h8.accepted(inited_project)
+
+    blocked = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1)
+    assert "MANAGED_BLOCK_MODIFIED" in h8.error_codes(blocked)
+    assert "人工填的状态" in h8.module_readme_text(inited_project)
+    assert req_meta(inited_project)["status"] == "IN_PRD"
+
+    forced = h8.closeout(inited_project, extra=("--actor", "alice", "--confirm"))
+    assert forced.ok, forced
+    text = h8.module_readme_text(inited_project)
+    assert "人工说明：本模块由招聘团队维护。" in text, "区块外人工内容必须保留"
+    body = h8.managed_body(text) or ""
+    assert "人工填的状态" not in body
+    assert "| SC-RES-01 | 已验收 |" in body
+    assert req_meta(inited_project)["status"] == "DONE"
+
+
 def test_closeout_retry_completes_interrupted_closeout(inited_project: Path):
     h8.accepted(inited_project)
     failed = h8.closeout(inited_project, extra=("--actor", "alice"), expect=1,

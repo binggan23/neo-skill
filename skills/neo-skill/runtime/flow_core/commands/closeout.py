@@ -87,9 +87,7 @@ def _closeout(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> R
             object=record.id,
             suggestion="PRD 必须显式绑定一个主需求（source_reqs），否则无法判定「需求是否完成」",
         )
-    if plan.modified_blocks and not bool(getattr(args, "confirm", False)):
-        index.require_confirm(
-            index.IndexResult(plans=plan.index_plans), confirm=False)
+    closeout.require_confirm(plan, confirm=bool(getattr(args, "confirm", False)))
 
     pending = closeout.pending_ops(workspace, plan)
     if not pending and plan.main_req_status == "DONE":
@@ -349,14 +347,8 @@ def _main_req_status(workspace: Workspace, rules: Rules, req_id: str | None) -> 
 
 def _tx_touches_modified_block(workspace: Workspace, rules: Rules,
                                tx: transactions.Transaction) -> bool:
-    targets = set(index.targets(rules))
-    for op in tx.ops:
-        if op.path not in targets:
-            continue
-        path = workspace.path(op.path)
-        if path.is_file() and index.is_modified(fsutil.read_text(path)):
-            return True
-    return False
+    """待写入的目标里有受管理区块被人工改过（覆盖前需要 --confirm）。"""
+    return any(closeout.has_modified_block(workspace, op.path) for op in tx.ops)
 
 
 def _resolve_actor(workspace: Workspace, args: argparse.Namespace, prd_id: str) -> str:

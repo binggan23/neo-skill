@@ -75,11 +75,8 @@ class CloseoutPlan:
     feature_rel: str = ""
     readme_rel: str = ""
     problems: list[str] = field(default_factory=list)
-
-    @property
-    def modified_blocks(self) -> list[str]:
-        """被人工改过的受管理区块（覆盖前需要确认）。"""
-        return [plan.path for plan in self.index_plans if plan.modified]
+    # 受管理区块被人工改过的目标（含模块 README 的场景区块）：覆盖前需要 --confirm
+    modified_blocks: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,7 +88,7 @@ class CloseoutPlan:
             "feature_doc": self.feature_rel,
             "scenario_block": self.readme_rel,
             "index_files": [plan.path for plan in self.index_plans],
-            "modified_blocks": self.modified_blocks,
+            "modified_blocks": list(self.modified_blocks),
             "problems": list(self.problems),
         }
 
@@ -158,7 +155,7 @@ def render_feature_doc(workspace: Workspace, record: metadata.PrdRecord,
     data = record.meta.get("acceptance") or {}
     titles = acceptance.scenario_titles(record)
     body = [
-        f"# {record.feature or record.slug} 功能现状",
+        f"# {record.title or record.feature or record.slug} 功能现状",
         "",
         "> 本文件由 `flow-core acceptance closeout` 维护：首次验收创建，"
         "之后每次验收只在「本次变化」追加，正文由人维护。",
@@ -348,7 +345,9 @@ def build(workspace: Workspace, rules: Rules, record: metadata.PrdRecord) -> Clo
     _add_op(ops, order, plan.feature_rel, feature_content)
     order += 1
 
-    # ②场景状态
+    # ②场景状态（模块 README 的受管理区块，与索引同一套约定）
+    if has_modified_block(workspace, plan.readme_rel):
+        plan.modified_blocks.append(plan.readme_rel)
     _add_op(ops, order, plan.readme_rel, module_readme_content(workspace, rules, record))
     order += 1
 
@@ -359,6 +358,8 @@ def build(workspace: Workspace, rules: Rules, record: metadata.PrdRecord) -> Clo
     overrides = {plan.main_req_rel: req_text}
     plan.index_plans = index.plan(workspace, rules, overrides=overrides).plans
     for block in plan.index_plans:
+        if block.modified:
+            plan.modified_blocks.append(block.path)
         _add_op(ops, order, block.path, block.text)
         order += 1
 
@@ -367,6 +368,27 @@ def build(workspace: Workspace, rules: Rules, record: metadata.PrdRecord) -> Clo
         _add_op(ops, order, plan.main_req_rel, req_text)
     plan.ops = ops
     return plan
+
+
+def has_modified_block(workspace: Workspace, rel: str) -> bool:
+    path = workspace.path(rel)
+    return path.is_file() and index.is_modified(fsutil.read_text(path))
+
+
+def require_confirm(plan: CloseoutPlan, *, confirm: bool) -> None:
+    """受管理区块被人工改过且没有显式确认 → `MANAGED_BLOCK_MODIFIED`（不写任何文件）。"""
+    if not plan.modified_blocks or confirm:
+        return
+    paths = "、".join(plan.modified_blocks)
+    raise FlowError(
+        "MANAGED_BLOCK_MODIFIED",
+        f"受管理区块被人工修改过：{paths}",
+        object=plan.modified_blocks[0],
+        suggestion="确认这些修改可以被收尾覆盖后，加 --confirm（并申报 --actor）重新执行；"
+                   "区块外的说明不会被覆盖",
+        next_actions=[f"{FLOW_CORE} acceptance closeout --prd {plan.prd} "
+                      f"--actor <成员 id> --confirm"],
+    )
 
 
 def _add_op(ops: list[dict[str, Any]], order: int, path: str, content: str) -> None:

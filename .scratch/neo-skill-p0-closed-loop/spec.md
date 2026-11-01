@@ -1,6 +1,6 @@
 # Neo Skill P0 最小研发闭环
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -235,3 +235,20 @@ P0 主链路为：需求草稿 → grilling → 需求负责人排期 → PRD �
 - `ready-for-agent` 表示需求和测试 seam 已经足够明确，可以进入实现拆解；它不表示代码已经实现或 P0 已验收。
 - P0 的完成条件是：自动化测试覆盖关键合法与违规路径；CLI 可脱离 Agent 执行关键确定性操作；Claude Code 隔离端到端主链路走通；所有人工决策、状态、版本、验证证据和收尾结果可追踪。
 - 由于取消 Hook，流程治理无法阻止用户直接编辑文件。实现必须把这一限制体现在错误提示、lint、CI 和文档中，不得对外宣称拥有不可绕过的安全强制能力。
+
+## 实现结果
+
+全部 10 个 ticket 已实现并合并到集成分支 `feat/neo-skill-p0`（HEAD `deb69ef`，起点 `7dddaa6`）。
+
+- **交付**：`flow-core` CLI 九个命令组（`init`/`doctor`/`req`/`prd`/`dev`/`acceptance`/`lint`/`index`/`recover`）、
+  五个阶段 Skill（`project`/`requirements`/`prd`/`dev`/`acceptance`）+ 路由 `neo-skill`、声明式规则与模板。
+- **测试**：全量 `pytest tests/` **517 passed**，全部为 CLI 黑盒测试（隔离临时 workspace，断言退出码、
+  `--json` 信封、文件状态、metadata、hash、锁、事务、索引）。
+- **性能**（NFR-004）：1000 需求 / 200 PRD 夹具上 `lint` 0.80s、`index` 0.94s、状态查询 0.22–0.65s
+  （预算 10s）；单次状态变更 0.61s（预算 2s）。
+- **端到端**：`scripts/pilot.sh` 在隔离目录跑通 P0 主链路，终态 `REQ DONE` / `PRD ACCEPTED` /
+  `closeout COMMITTED` / `lint` 0 error，529 文件快照前后零污染。Claude Code 真实调用已验证。
+- **code-review**：两轴四组窄 scope 评审，发现 7 项规格缺口（FR-043/049/050、BR-014/015、FR-074、
+  NFR-007、FR-073），全部修复并复核；修复见 commit `deb69ef`。
+- **已知阻塞**：`npx skills@latest add binggan23/neo-skill` 在远端不可用（`main` 无 `skills/` 目录），
+  需先合并到 `main` 并推送后方可复验。见 `docs/pilot-report.md`。

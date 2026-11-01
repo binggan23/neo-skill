@@ -64,13 +64,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 # --------------------------------------------------------------------------
 # 参数：ticket 06（验证与提交验收）
 # --------------------------------------------------------------------------
-def _verify_common() -> "argparse.ArgumentParser":
-    """`dev verify` 与其子命令共用的参数（写在子命令前后都行）。"""
+def _verify_common(*, suppress: bool = False) -> "argparse.ArgumentParser":
+    """`dev verify` 与其子命令共用的参数（写在子命令前后都行）。
+
+    `suppress=True` 给子命令用：默认值用 `argparse.SUPPRESS`，避免子命令覆盖
+    写在子命令之前的同名参数（与 cli 的全局参数同一手法）。
+    """
+    default = argparse.SUPPRESS if suppress else None
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--prd", default=None, help="PRD 编号（必须显式绑定）")
-    parser.add_argument("--suite", default="unit",
+    parser.add_argument("--prd", default=default, help="PRD 编号（必须显式绑定）")
+    parser.add_argument("--suite", default=default if suppress else "unit",
                         help="验证套件：unit / integration / static / e2e 或项目自定义")
-    parser.add_argument("--ac", action="append", default=None, metavar="AC-...",
+    parser.add_argument("--ac", action="append", default=default, metavar="AC-...",
                         help="关联的 AC 编号（逗号分隔或重复；缺省为 PRD 的全部 AC）")
     return parser
 
@@ -89,7 +94,7 @@ def _add_verification_commands(subparsers, parents) -> None:
 
     vsub = verify.add_subparsers(dest="verify_command", metavar="<子命令>")
 
-    record = vsub.add_parser("record", parents=[*parents, _verify_common()],
+    record = vsub.add_parser("record", parents=[*parents, _verify_common(suppress=True)],
                              help="记录已在外部执行过的验证结果")
     record.add_argument("--result", required=True,
                         choices=[verification.RESULT_PASS, verification.RESULT_FAIL,
@@ -99,12 +104,14 @@ def _add_verification_commands(subparsers, parents) -> None:
     record.add_argument("--output-file", default=None, required=True,
                         help="外部命令的原始输出文件（内容原样保存为 raw log）")
     record.add_argument("--reason", default=None, help="阻塞/未通过的理由")
+    record.add_argument("--command", default=None,
+                        help="外部实际执行的命令（原样记录，供防伪造检查核对）")
 
-    repair = vsub.add_parser("repair", parents=[*parents, _verify_common()],
+    repair = vsub.add_parser("repair", parents=[*parents, _verify_common(suppress=True)],
                              help="记录一次自动修复轮次（受 max_repair_rounds 限制）")
     repair.add_argument("--note", required=True, help="本轮修复做了什么")
 
-    guard = vsub.add_parser("guard", parents=[*parents, _verify_common()],
+    guard = vsub.add_parser("guard", parents=[*parents, _verify_common(suppress=True)],
                             help="防伪造检查：删用例/弱化断言/跳过测试/改 AC")
     guard.add_argument("--allow-skip", action="store_true",
                        help="显式豁免「跳过测试」类命中（必须同时给 --reason）")
@@ -425,7 +432,7 @@ def _verify(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
         raise
 
 
-def _login_state(workspace: Workspace, rules: Rules, args: argparse.Namespace
+def _require_developing(workspace: Workspace, rules: Rules, args: argparse.Namespace
                  ) -> metadata.PrdRecord:
     """验证类命令的公共前置：显式绑定 PRD + 状态属 DEVELOPING（否则提示先 dev start）。"""
     record = metadata.load(workspace, _require_prd(args), rules=rules)
@@ -450,7 +457,7 @@ def _login_state(workspace: Workspace, rules: Rules, args: argparse.Namespace
 
 def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     command = "dev.verify"
-    record = _login_state(workspace, rules, args)
+    record = _require_developing(workspace, rules, args)
     suite = str(getattr(args, "suite", None) or "unit").strip() or "unit"
     acs = _resolve_acs(args, record)
     not_applicable = bool(getattr(args, "not_applicable", False))
@@ -481,7 +488,8 @@ def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) ->
         entry = verification.append_run(
             workspace, record, data, suite=suite, result=verification.RESULT_NOT_APPLICABLE,
             acs=acs, raw_text="", command=project_command, exit_code=None,
-            duration_ms=0, mode="not-applicable", reason=reason)
+            duration_ms=0, mode="not-applicable", reason=reason,
+            roots=verification.code_roots(rules))
         data["repair_limit"] = verification.repair_limit(workspace, rules)
     else:
         exit_code, stdout, stderr, duration_ms, timed_out = verification.execute(
@@ -493,7 +501,8 @@ def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) ->
         entry = verification.append_run(
             workspace, record, data, suite=suite, result=outcome, acs=acs,
             raw_text=raw_text, command=project_command, exit_code=exit_code,
-            duration_ms=duration_ms, mode="executed")
+            duration_ms=duration_ms, mode="executed",
+            roots=verification.code_roots(rules))
         data["repair_limit"] = verification.repair_limit(workspace, rules)
 
     paths = _persist(workspace, rules, record, data, result)
@@ -537,7 +546,7 @@ def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) ->
 
 def _verify_record(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     command = "dev.verify.record"
-    record = _login_state(workspace, rules, args)
+    record = _require_developing(workspace, rules, args)
     suite = str(getattr(args, "suite", None) or "unit").strip() or "unit"
     outcome = str(getattr(args, "result", "") or "").strip()
     if outcome not in (verification.RESULT_PASS, verification.RESULT_FAIL,
@@ -567,7 +576,8 @@ def _verify_record(workspace: Workspace, rules: Rules, args: argparse.Namespace)
     entry = verification.append_run(
         workspace, record, data, suite=suite, result=outcome, acs=acs,
         raw_text=raw_text, command=_clean(getattr(args, "command", None)),
-        exit_code=exit_code, duration_ms=0, mode="recorded", reason=reason)
+        exit_code=exit_code, duration_ms=0, mode="recorded", reason=reason,
+        roots=verification.code_roots(rules))
     data["repair_limit"] = verification.repair_limit(workspace, rules)
 
     result = Result(command=command)
@@ -589,7 +599,7 @@ def _verify_record(workspace: Workspace, rules: Rules, args: argparse.Namespace)
 
 def _verify_repair(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     command = "dev.verify.repair"
-    record = _login_state(workspace, rules, args)
+    record = _require_developing(workspace, rules, args)
     note = _clean(getattr(args, "note", None))
     if not note:
         raise FlowError("NOTE_REQUIRED", "缺少 --note（要记录本轮修复做了什么）")
@@ -612,7 +622,7 @@ def _verify_repair(workspace: Workspace, rules: Rules, args: argparse.Namespace)
 
 def _verify_guard(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     command = "dev.verify.guard"
-    record = _login_state(workspace, rules, args)
+    record = _require_developing(workspace, rules, args)
     data = verification.load_state(workspace, record)
     findings = verification.guard_findings(workspace, record, data)
 
@@ -643,6 +653,7 @@ def _verify_guard(workspace: Workspace, rules: Rules, args: argparse.Namespace) 
     result.data["ok"] = not remaining
     result.data["findings"] = [item.to_dict() for item in findings]
     result.data["waived"] = [item.to_dict() for item in findings if item.waived]
+    result.data["changed_files"] = verification.changed_files(workspace, data)
 
     for item in remaining:
         result.fail(item.code, item.message, object=item.object, suggestion=item.suggestion)
@@ -700,7 +711,8 @@ def _submit_acceptance(workspace: Workspace, rules: Rules, args: argparse.Namesp
     data = verification.load_state(workspace, record)
     verification.sync_acs(data, record)
     data["repair_limit"] = verification.repair_limit(workspace, rules)
-    submission = verification.build_submission(workspace, record, data, actor)
+    submission = verification.build_submission(workspace, record, data, actor,
+                                              roots=verification.code_roots(rules))
 
     result = Result(command=command)
     with locks.object_lock(workspace, record.id, command=command,

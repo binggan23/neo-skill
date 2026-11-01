@@ -273,6 +273,14 @@ def repair_limit(workspace: Workspace, rules: Rules) -> int:
     return rules.limit("max_repair_rounds", DEFAULT_REPAIR_ROUNDS)
 
 
+def code_roots(rules: Rules) -> tuple[str, ...]:
+    """代码版本摘要与防伪造检查的源码根目录（`rules.dev.code_roots`，默认 src/tests）。"""
+    declared = (rules.data.get("dev") or {}).get("code_roots")
+    if isinstance(declared, list) and declared:
+        return tuple(str(item) for item in declared)
+    return CODE_ROOTS
+
+
 def verify_states(rules: Rules) -> tuple[str, ...]:
     declared = (rules.data.get("dev") or {}).get("verify_states")
     if isinstance(declared, list) and declared:
@@ -296,9 +304,10 @@ def environment(workspace: Workspace, command: str | None = None) -> dict[str, A
     return data
 
 
-def _iter_code_files(workspace: Workspace) -> list[tuple[str, str]]:
+def _iter_code_files(workspace: Workspace,
+                     roots: Iterable[str] = CODE_ROOTS) -> list[tuple[str, str]]:
     parts: list[tuple[str, str]] = []
-    for root in CODE_ROOTS:
+    for root in roots:
         directory = workspace.path(root)
         if not directory.is_dir():
             continue
@@ -310,7 +319,7 @@ def _iter_code_files(workspace: Workspace) -> list[tuple[str, str]]:
     return parts
 
 
-def code_version(workspace: Workspace) -> str:
+def code_version(workspace: Workspace, roots: Iterable[str] = CODE_ROOTS) -> str:
     """Git 项目记 `git:<sha>`；非 Git 项目记 `src/`+`tests/` 内容摘要（SRS-FR-068）。"""
     try:
         proc = subprocess.run(
@@ -326,7 +335,7 @@ def code_version(workspace: Workspace) -> str:
         sha = (proc.stdout or "").strip()
         if sha:
             return f"git:{sha}"
-    return hashing.digest_of(_iter_code_files(workspace))
+    return hashing.digest_of(_iter_code_files(workspace, roots))
 
 
 def verification_digest(workspace: Workspace, data: dict[str, Any]) -> str:
@@ -370,7 +379,7 @@ def _parse_tests(workspace: Workspace) -> tuple[dict[str, int], int]:
 
 
 def take_snapshot(workspace: Workspace, record: metadata.PrdRecord, data: dict[str, Any],
-                  *, code: str) -> dict[str, Any]:
+                  *, code: str, roots: Iterable[str] = CODE_ROOTS) -> dict[str, Any]:
     cases, skip_markers = _parse_tests(workspace)
     return {
         "at": fsutil.now_iso(),
@@ -379,7 +388,7 @@ def take_snapshot(workspace: Workspace, record: metadata.PrdRecord, data: dict[s
         "acs": ac_ids(record),
         "test_cases": cases,
         "skip_markers": skip_markers,
-        "files": dict(_iter_code_files(workspace)),
+        "files": dict(_iter_code_files(workspace, roots)),
     }
 
 
@@ -482,6 +491,54 @@ def unwaived(findings: Iterable[Finding]) -> list[Finding]:
     return [item for item in findings if not item.waived]
 
 
+def changed_files(workspace: Workspace, data: dict[str, Any]) -> list[dict[str, str]]:
+    """上次验证之后 `src/`、`tests/` 下内容发生变化的文件（供 guard 报告）。
+
+    Git 可用且上次验证记录到 `git:<sha>` 时优先 `git diff --name-only <sha> -- src tests`；
+    否则用上次验证留下的文件摘要对比（非 Git 项目）。只做报告，不产生错误码——
+    真正的判定在 `guard_findings`。
+    """
+    snapshot = data.get("snapshot") or {}
+    previous = {str(k): str(v) for k, v in (snapshot.get("files") or {}).items()}
+    base = str(snapshot.get("code_version") or "")
+    if base.startswith("git:"):
+        diffed = _git_diff(workspace, base.removeprefix("git:"))
+        if diffed is not None:
+            return diffed
+    current = dict(_iter_code_files(workspace))
+    changed: list[dict[str, str]] = []
+    for rel in sorted(set(previous) | set(current)):
+        if previous.get(rel) == current.get(rel):
+            continue
+        change = ("added" if rel not in previous
+                  else "removed" if rel not in current else "modified")
+        changed.append({"path": rel, "change": change})
+    return changed
+
+
+def _git_diff(workspace: Workspace, sha: str) -> list[dict[str, str]] | None:
+    """Git 可用时列出既有变更；失败返回 None（调用方回退到摘要对比）。"""
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "--name-status", sha, "--", *CODE_ROOTS],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    labels = {"A": "added", "M": "modified", "D": "removed", "R": "renamed", "C": "copied"}
+    changed: list[dict[str, str]] = []
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        change = labels.get(parts[0][:1], "modified")
+        rel = parts[-1].replace("\\", "/")
+        changed.append({"path": rel, "change": change})
+    return changed
+
+
 # --------------------------------------------------------------------------
 # 追加一条验证记录
 # --------------------------------------------------------------------------
@@ -556,7 +613,8 @@ def _decode(raw: Any) -> str:
 def append_run(workspace: Workspace, record: metadata.PrdRecord, data: dict[str, Any], *,
                suite: str, result: str, acs: list[str], raw_text: str, command: str | None,
                exit_code: int | None, duration_ms: int, mode: str,
-               reason: str | None = None, started_at: str | None = None) -> dict[str, Any]:
+               reason: str | None = None, started_at: str | None = None,
+               roots: Iterable[str] = CODE_ROOTS) -> dict[str, Any]:
     """追加一条验证记录（含原始输出落盘与 AC 结论更新）。返回该记录。"""
     if mode == "not-applicable":
         raw_rel = None   # 不适用项没有可执行输出，不伪造空证据文件
@@ -599,10 +657,10 @@ def append_run(workspace: Workspace, record: metadata.PrdRecord, data: dict[str,
         data["repair_rounds"] = 0  # 通过即结束本轮修复循环
 
     data["prd_hash"] = record.compute_content_hash()
-    data["code_version"] = code_version(workspace)
+    data["code_version"] = code_version(workspace, roots)
     data["verification_summary"] = summarize(entries)
     data["snapshot"] = take_snapshot(workspace, record, data,
-                                     code=str(data["code_version"]))
+                                     code=str(data["code_version"]), roots=roots)
     return entry
 
 
@@ -623,7 +681,7 @@ def evaluate(workspace: Workspace, rules: Rules, record: metadata.PrdRecord) -> 
     status.submitted = bool(data.get("submission"))
     status.submission = data.get("submission")
     status.prd_hash = str(data.get("prd_hash") or "") or None
-    status.code_version = code_version(workspace)
+    status.code_version = code_version(workspace, code_roots(rules))
     status.verification_digest = verification_digest(workspace, data)
 
     reasons: list[str] = []
@@ -674,12 +732,13 @@ def load_rules_for(workspace: Workspace) -> Rules:
 # 提交验收基线
 # --------------------------------------------------------------------------
 def build_submission(workspace: Workspace, record: metadata.PrdRecord,
-                     data: dict[str, Any], actor: str | None = None) -> dict[str, Any]:
+                     data: dict[str, Any], actor: str | None = None,
+                     *, roots: Iterable[str] = CODE_ROOTS) -> dict[str, Any]:
     """写入验收提交基线：代码版本 + PRD hash + 验证证据摘要 + AC 清单。
 
     这三者是 ticket 07/09 判定「旧提交是否失效」的依据（HLD §6.3，BR-016）。
     """
-    code = code_version(workspace)
+    code = code_version(workspace, roots)
     prd_hash = record.compute_content_hash()
     entries = data.get("acs") or []
     submission = {

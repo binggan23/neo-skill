@@ -269,6 +269,33 @@ def test_verify_requires_command_unless_not_applicable(developing: Path) -> None
     assert "COMMAND_REQUIRED" in error_codes(result)
 
 
+def test_each_suite_keeps_its_own_raw_log(developing: Path) -> None:
+    run(developing, "dev", "verify", "--prd", PRD_ID, "--suite", "unit",
+        "--command", PASS_CMD, "--ac", AC_1)
+    run(developing, "dev", "verify", "--prd", PRD_ID, "--suite", "static",
+        "--command", FAIL_CMD, "--ac", AC_2, expect=1)
+
+    names = [path.name for path in raw_logs(developing)]
+    assert len(names) == 2
+    assert any(name.startswith("raw-unit-") for name in names)
+    assert any(name.startswith("raw-static-") for name in names)
+    runs = ver_json(developing)["runs"]
+    assert [run_["suite"] for run_ in runs] == ["unit", "static"]
+    assert runs[0]["id"] != runs[1]["id"]
+
+
+def test_guard_detects_skip_flag_in_recorded_command(developing: Path) -> None:
+    output = write(developing / "external.log", "1 passed, 3 deselected\n")
+    run(developing, "dev", "verify", "record", "--prd", PRD_ID, "--suite", "unit",
+        "--result", "pass", "--ac", AC_1, "--exit-code", "0",
+        "--output-file", str(output), "--command", "pytest -q -k 'not slow'")
+
+    result = run(developing, "dev", "verify", "guard", "--prd", PRD_ID, expect=1)
+
+    codes = {item["code"] for item in result.json["data"]["findings"]}
+    assert "TEST_SKIPPED" in codes
+
+
 @pytest.mark.parametrize("state", ["draft", "approved"])
 def test_verify_rejected_outside_developing(state: str, approved: Path) -> None:
     project = approved

@@ -25,6 +25,7 @@ from typing import Sequence
 from . import __version__
 from .commands import doctor as doctor_command
 from .commands import init as init_command
+from .commands import prd as prd_command
 from .commands import req as req_command
 from .output import EXIT_FAIL, EXIT_OK, EXIT_USAGE, FlowError, Result, render_human
 from .rules import load_rules
@@ -35,6 +36,7 @@ COMMAND_MODULES = (
     init_command,
     doctor_command,
     req_command,
+    prd_command,
 )
 
 PROG = "flow-core"

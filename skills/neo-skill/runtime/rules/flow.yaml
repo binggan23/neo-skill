@@ -69,6 +69,10 @@ prd:
     ACCEPTED: []
     REJECTED: []
     SUPERSEDED: []
+  # 草稿期：正文与场景/功能/版本字段可改（prd update）
+  draft_states: [DRAFT, CHANGES_REQUESTED]
+  # 已建立基线：内容或锁定字段变化必须走 CR 并重新批准（SRS-FR-049/050）
+  cr_states: [APPROVED, DEVELOPING, READY_FOR_ACCEPTANCE, ACCEPTED, SUPERSEDED]
 
 # 人工决策命令 → 需要的团队职责。状态跳转本身由上面的状态机约束。
 gates:
@@ -80,6 +84,7 @@ gates:
   prd.submit-review: {role: stakeholder, from: DRAFT, to: IN_REVIEW}
   prd.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
   prd.request-changes: {role: requirement_owner, from: IN_REVIEW, to: CHANGES_REQUESTED}
+  prd.reject: {role: requirement_owner, to: REJECTED}
   dev.start: {role: developer, from: APPROVED, to: DEVELOPING}
   acceptance.submit: {role: developer, from: DEVELOPING, to: READY_FOR_ACCEPTANCE}
   acceptance.approve: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: ACCEPTED}

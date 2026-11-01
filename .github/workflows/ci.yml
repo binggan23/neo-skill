@@ -123,10 +123,11 @@ jobs:
           FLOW_CORE="$PWD/skills/neo-skill/runtime/flow-core"
           python "$FLOW_CORE" --root "$WORKDIR" init --json > /dev/null
           rm -f "$WORKDIR/02-definition/mvp-scope.md"
-          if python "$FLOW_CORE" --root "$WORKDIR" lint --json > lint-report.json; then
+          REPORT="$WORKDIR/lint-report.json"
+          if python "$FLOW_CORE" --root "$WORKDIR" lint --json > "$REPORT"; then
             echo "::error::lint 在有缺失产物时仍然返回 0，违规结果没有被拦住"
-            cat lint-report.json
+            cat "$REPORT"
             exit 1
           fi
-          grep -q "MISSING_REQUIRED_PATH" lint-report.json
+          grep -q "MISSING_REQUIRED_PATH" "$REPORT"
           echo "lint 以非零退出码报告了 MISSING_REQUIRED_PATH"

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import tempfile
@@ -124,15 +123,3 @@ def parse_front_matter(text: str) -> tuple[dict[str, Any], str]:
 def render_front_matter(data: dict[str, Any], body: str) -> str:
     head = yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=False)
     return f"{FRONT_MATTER_DELIM}\n{head}{FRONT_MATTER_DELIM}\n\n{body.lstrip(chr(10))}"
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
-            digest.update(chunk)
-    return "sha256:" + digest.hexdigest()
-
-
-def text_sha256(text: str) -> str:
-    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()

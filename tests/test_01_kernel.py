@@ -334,3 +334,37 @@ def test_init_leaves_no_temp_files(project: Path) -> None:
 
     leftovers = [p for p in project.rglob("*.tmp")] + [p for p in project.rglob(".*.tmp")]
     assert leftovers == []
+
+
+# ---------------------------------------------------------------- 命令注册机制
+def test_command_registry_contract_allows_appending_groups() -> None:
+    """后续 ticket 只需在 COMMAND_MODULES 追加模块，无需改 cli.py 已有逻辑。"""
+    from flow_core import cli
+
+    assert len(cli.COMMAND_MODULES) >= 2
+    for module in cli.COMMAND_MODULES:
+        assert isinstance(module.NAME, str) and module.NAME
+        assert isinstance(module.HELP, str) and module.HELP
+        assert callable(module.add_arguments)
+        assert callable(module.run)
+
+    parser = cli.build_parser()
+    actions = [a for a in parser._actions if a.dest == "command"]
+    assert actions, "缺少子命令注册"
+    registered = set(actions[0].choices)
+    assert {"init", "doctor"} <= registered
+
+
+def test_flow_error_translates_to_failure_envelope() -> None:
+    from flow_core.output import FlowError
+
+    error = FlowError("REQ_LOCKED", "需求已进入 PRD，不能直接改", object="REQ-001",
+                      suggestion="走 CR 变更", next_actions=["flow-core prd cr ..."])
+
+    result = error.to_result("req.update")
+
+    assert result.success is False
+    assert result.command == "req.update"
+    assert result.errors[0].code == "REQ_LOCKED"
+    assert result.errors[0].object == "REQ-001"
+    assert result.next_actions == ["flow-core prd cr ..."]

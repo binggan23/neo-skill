@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from . import fsutil
@@ -44,12 +43,3 @@ def allocate(workspace: Workspace, key: str, *, width: int = 3, prefix: str | No
         (*COUNTER_KEYS, *counters.keys()))}
     fsutil.atomic_write_yaml(workspace.counters_file, ordered)
     return format_id(prefix or key, next_value, width)
-
-
-def next_sequence(workspace: Workspace, key: str) -> int:
-    """当前序列号（未分配）；`format_id` 之前用。"""
-    return int(load_counters(workspace).get(key, 0))
-
-
-def counters_file_for(root: Path) -> Path:
-    return Workspace(root).counters_file

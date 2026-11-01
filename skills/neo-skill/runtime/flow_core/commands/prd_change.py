@@ -134,28 +134,36 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
                        reason=reason, impact=impact, content=content, actor=actor,
                        detail=detail)
 
-        if invalidating:
-            if triggers:
-                state.apply_transition(record.meta, machine=PRD_MACHINE, to_state=to_state,
-                                       actor=actor, action=command, rules=rules)
-                _annotate_history(record.meta, f"{cr_id}: {title}")
-            _append_decision(record.meta, actor=actor, role=str(gate["role"]),
-                             decision="changes_requested", object_id=record.id,
-                             note=reason, extra={"cr": cr_id})
-            record.meta["baseline_invalidated"] = baseline.mark_invalidated(
-                cr_id=cr_id, previous_status=previous_status,
-                previous_hash=previous_hash, actor=actor, at=at,
-            )
-            _mark_acceptance_superseded(record, cr_id=cr_id, at=at)
-            metadata.save(workspace, record)
-            marked = baseline.mark_downstream(workspace, record, cr_id=cr_id,
-                                              prd_hash=previous_hash, at=at, actor=actor)
-        else:
-            _append_decision(record.meta, actor=actor, role=str(gate["role"]),
-                             decision="changes_requested", object_id=record.id,
-                             note=reason, extra={"cr": cr_id})
-            metadata.save(workspace, record)
-            marked = []
+        try:
+            if invalidating:
+                if triggers:
+                    state.apply_transition(record.meta, machine=PRD_MACHINE, to_state=to_state,
+                                           actor=actor, action=command, rules=rules)
+                    _annotate_history(record.meta, f"{cr_id}: {title}")
+                _append_decision(record.meta, actor=actor, role=str(gate["role"]),
+                                 decision="changes_requested", object_id=record.id,
+                                 note=reason, extra={"cr": cr_id})
+                record.meta["baseline_invalidated"] = baseline.mark_invalidated(
+                    cr_id=cr_id, previous_status=previous_status,
+                    previous_hash=previous_hash, actor=actor, at=at,
+                )
+                _mark_acceptance_superseded(record, cr_id=cr_id, at=at)
+                metadata.save(workspace, record)
+                marked = baseline.mark_downstream(workspace, record, cr_id=cr_id,
+                                                  prd_hash=previous_hash, at=at, actor=actor)
+            else:
+                _append_decision(record.meta, actor=actor, role=str(gate["role"]),
+                                 decision="changes_requested", object_id=record.id,
+                                 note=reason, extra={"cr": cr_id})
+                metadata.save(workspace, record)
+                marked = []
+        except BaseException:
+            # 失败零副作用：metadata 未能落地时删掉刚写的 CR 文件（本次刚创建，不是用户资产）
+            try:
+                cr.path.unlink()
+            except OSError:
+                pass
+            raise
 
     result = Result(command=command)
     result.add(cr.rel, "cr", "created")

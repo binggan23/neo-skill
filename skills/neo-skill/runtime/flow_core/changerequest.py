@@ -55,7 +55,7 @@ def normalize_id(raw: str, rules: Rules) -> str:
     text = str(raw or "").strip().upper()
     if not text:
         raise FlowError("CR_ID_REQUIRED", "缺少 CR 编号（--cr）",
-                        suggestion=f"用 flow-core prd cr list --id PRD-001 查看已有 CR")
+                        suggestion="用 flow-core prd cr list --id PRD-001 查看已有 CR")
     if text.isdigit():
         return f"{prefix}-{int(text):0{rules.id_width}d}"
     match = _CR_ID_RE.match(text)

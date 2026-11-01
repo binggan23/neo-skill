@@ -237,8 +237,9 @@ def _record(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
         "stale": False,
     })
     data["updated_at"] = fsutil.now_iso()
-    if result_value != acceptance.CONCLUSION_PASS:
-        data["conditional"] = False
+    # 人工重新记录任何结论都意味着清单仍在处理中：上一次「有条件通过」的决定随之失效，
+    # 但遗留问题保留（仍写在 checklist.yaml 与报告里），处理后可以再次请求确认。
+    data["conditional"] = False
 
     result = Result(command=command)
     with locks.object_lock(workspace, record.id, command=command, rules_version=rules.version):
@@ -617,6 +618,7 @@ def _status(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     result.data.update(status.to_dict())
     result.data["prd"] = record.to_dict()
     result.data["dir"] = acceptance.acceptance_dir(workspace, record)
+    result.data["closeout"] = acceptance.closeout_inputs(workspace, rules, record)
 
     pending = status.pending
     result.notes.append(

@@ -432,6 +432,36 @@ def test_conditional_pass_does_not_reach_accepted(prepared: Path) -> None:
     assert "ACCEPTED" not in prd_metadata_text(prepared)
 
 
+def test_conditional_can_be_resolved_by_recording_again(prepared: Path) -> None:
+    record_all_pass(prepared)
+    run(prepared, "acceptance", "conditional", "--prd", PRD_ID, "--actor", "alice",
+        "--confirm", "--reason", "导出格式待统一", "--leftover", "导出文件名格式下一版统一")
+    # 遗留问题处理完、人重新记录结论 → 条件决定失效（遗留问题仍可查）
+    record(prepared, AC_1, "pass", evidence="导出格式已按约定调整并复核")
+
+    result = approve(prepared)
+
+    assert result.code == 0, result
+    assert result.json["data"]["prd"]["status"] == "ACCEPTED"
+    assert result.json["data"]["conditional"] is False
+
+
+def test_status_exposes_closeout_gate_for_ticket08(prepared: Path) -> None:
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+    assert result.json["data"]["closeout"]["ok"] is False
+    assert "ACCEPTANCE_MISSING" in result.json["data"]["closeout"]["problems"]
+
+    record_all_pass(prepared)
+    approve(prepared, extra=("--leftover", "导出格式下一版统一"))
+
+    done = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+    closeout = done.json["data"]["closeout"]
+    assert closeout["ok"] is True
+    assert closeout["acceptance"]["approved_by"] == "alice"
+    assert closeout["leftovers"] == ["导出格式下一版统一"]
+    assert closeout["checklist_digest"].startswith("sha256:")
+
+
 def test_conditional_requires_reason_and_leftover(prepared: Path) -> None:
     record_all_pass(prepared)
 

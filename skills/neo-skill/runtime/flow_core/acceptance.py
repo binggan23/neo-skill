@@ -537,8 +537,12 @@ def require_state(record: metadata.PrdRecord, allowed: Iterable[str],
     hint = (f"人工验收只能对已提交验收的 PRD 执行：先补齐验证并执行 "
             f"{FLOW_CORE} dev submit-acceptance --prd {record.id}")
     if record.status == "ACCEPTED":
-        hint = (f"{record.id} 已验收通过；继续收尾请执行 "
-                f"{FLOW_CORE} acceptance status --prd {record.id}")
+        # ACCEPTED 是终态：不能再改验收结论；收尾走 closeout，需要重验则先走 CR
+        hint = (f"{record.id} 已验收通过（结束状态，不能再改验收结论）：收尾请执行 "
+                f"{FLOW_CORE} acceptance status --prd {record.id}；"
+                f"若验收结论已失效（PRD/代码/证据变化），必须走 "
+                f"{FLOW_CORE} prd cr --id {record.id} --reason \"<变更原因>\" "
+                "重新评审批准后重新开发与验收（BR-016）")
     raise FlowError(
         "PRD_STATE_NOT_ALLOWED",
         f"PRD {record.id} 当前状态 {record.status}，不能执行 {command}（允许 {'、'.join(allowed)}）",

@@ -590,6 +590,19 @@ def test_checklist_change_after_approval_invalidates_acceptance(prepared: Path) 
 # --------------------------------------------------------------------------
 # 基线不一致时不许验收通过
 # --------------------------------------------------------------------------
+def test_accepted_is_terminal_for_recording(prepared: Path) -> None:
+    """ACCEPTED 是终态：不能再改验收结论；结论失效必须走 CR（BR-016）。"""
+    record_all_pass(prepared)
+    approve(prepared)
+
+    result = record(prepared, AC_1, "fail", evidence="验收后发现问题", expect=1)
+
+    assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
+    message = result.json["errors"][0]["suggestion"]
+    assert "prd cr" in message
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pass"
+
+
 def test_approve_refuses_when_verification_baseline_is_stale(prepared: Path) -> None:
     record_all_pass(prepared)
     write(prepared / "src/app.py", "print('changed before acceptance')\n")

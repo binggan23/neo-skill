@@ -85,6 +85,11 @@ gates:
   prd.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
   prd.request-changes: {role: requirement_owner, from: IN_REVIEW, to: CHANGES_REQUESTED}
   prd.reject: {role: requirement_owner, to: REJECTED}
+  # ticket 04：PRD 变更（CR）。`cr.approve` 的 from/to 由状态机约束（IN_REVIEW → APPROVED）；
+  # `cr.reject` 的目标状态按内容是否被改决定（未改 → 恢复 CR 前状态；已改 → 保持 IN_REVIEW）。
+  prd.cr.create: {role: requirement_owner}
+  prd.cr.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
+  prd.cr.reject: {role: requirement_owner}
   dev.start: {role: developer, from: APPROVED, to: DEVELOPING}
   acceptance.submit: {role: developer, from: DEVELOPING, to: READY_FOR_ACCEPTANCE}
   acceptance.approve: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: ACCEPTED}

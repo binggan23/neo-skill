@@ -17,7 +17,7 @@ description: Neo Skill PRD 阶段入口。当用户要把已排期的主需求�
 | 允许 | 禁止 |
 | --- | --- |
 | 通过 `flow-core prd ...` 写 `04-prds/` | 手改 `metadata.yaml`（状态、hash、history、confirmations、source_reqs） |
-| 在 `DRAFT`/`CHANGES_REQUESTED` 改正文、场景、功能标识、目标版本 | 直接改 `APPROVED` 及之后状态的 `prd.md` 或锁定字段 |
+| 在 `DRAFT`/`CHANGES_REQUESTED` 改正文、场景、功能标识、目标版本 | 直接改 `APPROVED` 及之后状态的 `prd.md` 或锁定字段（必须先登记 CR） |
 | 运行 `prd validate` / `prd self-review` 自查 | 自行批准 PRD，或替用户填 `--actor`/`--confirm` |
 | 读需求条目、模块 README、功能现状、术语表、constitution 作为 PRD 依据 | 编造业务结论、用户、指标、验收数据 |
 
@@ -25,8 +25,8 @@ description: Neo Skill PRD 阶段入口。当用户要把已排期的主需求�
   改 `03-requirements/` 走 `requirements` Skill，改 `02-definition/` 走对应阶段 Skill。
 - **不自行批准**：`prd approve` 必须由**需求负责人本人**申报身份并确认（BR-013）。
   AI 只能整理评审意见、准备命令、解释影响（含 hash 失效后果）。
-- **已批准内容不可直接改**：`prd update` 在 `APPROVED` 及之后返回 `PRD_LOCKED`，
-  必须走 CR（`flow-core prd cr`，见下文「后续能力」），CR 实现前请停下来问用户。
+- **已批准内容不可直接改**：`prd update` 在 `APPROVED` 及之后、且没有未决 CR 时返回 `PRD_LOCKED`，
+  必须先 `flow-core prd cr create` 登记变更（见下文「变更请求（CR）」），再在 CR 下改正文并 `prd cr approve`。
 
 ## 定位 flow-core
 
@@ -183,7 +183,11 @@ flow-core prd verify-hash --id PRD-001
 
 - 一致 → `success: true`，`data.match = true`；
 - 不一致 → `HASH_MISMATCH`（`data.expected` / `data.actual` 便于解释哪一侧变了）；
-- 从未批准 → `BASELINE_MISSING`。
+- 从未批准 → `BASELINE_MISSING`；
+- hash 一致但有未解除的 CR 失效标记 → `BASELINE_INVALIDATED`（ticket 04）。
+
+完整判定用 `flow-core prd baseline-status --id PRD-001`：返回 `valid`、`reasons`、
+`invalidated_by`（CR/时间/原状态/原 hash）与 `superseded_evidence`（被 CR 取代的旧批准与旧验收）。
 
 hash 参与范围（共享设计 §6）：`prd.md` + 存在的 `test-cases.md`（按相对路径与 UTF-8 字节）
 + `locked_fields` 指定的 metadata 字段（`id`、`slug`、`module`、`feature`、`scenarios`、
@@ -198,13 +202,55 @@ hash 参与范围（共享设计 §6）：`prd.md` + 存在的 `test-cases.md`�
 可用起点由规则表决定：`DRAFT`/`IN_REVIEW` → `REJECTED`。拒绝是终态旁支，
 编号与历史保留，不回收编号（BR-019）。
 
+## 变更请求（CR）：改已批准 PRD 的唯一正路（ticket 04 已实现）
+
+已批准（`APPROVED` 及之后）的正文与锁定字段**只能**通过 CR 修改（SRS-FR-049/050、BR-012）：
+
+```bash
+# 1. 登记变更（需求负责人）：记录原因与影响面，PRD 自动退回 IN_REVIEW、旧基线失效
+flow-core prd cr create --id PRD-001 --actor alice --confirm --reason "客户要求增加 CSV 导出" \
+  --impact spec=true,tasks=true,tests=true,design=false,version=v0.2.0 [--body-file cr.md]
+
+# 2. 在同一个 CR 下改正文（此时 prd update 才被允许）
+flow-core prd update --id PRD-001 --body-file prd-v2.md
+
+# 3. 重新批准：version + 1、生成新 hash、旧批准与旧验收保留为历史
+flow-core prd cr approve --id PRD-001 --cr CR-001 --actor alice --confirm
+
+# 或者拒绝这次变更
+flow-core prd cr reject --id PRD-001 --cr CR-001 --actor alice --confirm --reason "本期不做"
+
+flow-core prd cr list --id PRD-001 [--status OPEN|APPROVED|REJECTED]
+flow-core prd cr show --id PRD-001 --cr CR-001
+flow-core prd baseline-status --id PRD-001   # hash + 失效标记 + 被取代的历史证据
+```
+
+要点：
+
+- **没登记 CR 就改正文**仍被 `PRD_LOCKED` 拦住；CR 未决时 `prd approve` 被 `CR_OPEN` 拦住——
+  必须走 `prd cr approve`，版本才会递增。
+- CR 文件在 `04-prds/<module>/PRD-NNN-<slug>/changes/CR-NNN-<slug>.md`，`CR-NNN` 在 **PRD 内**编号。
+- CR 触发的失效写在 metadata 的 `baseline_invalidated`（`active`/`previous_status`/`previous_hash`），
+  已存在的 `06-specs/<module>/PRD-NNN-<slug>/.baseline.yaml` 与
+  `07-acceptance/<module>/PRD-NNN-<slug>/report.md` 会被标记 `baseline_valid: false`；
+  **目录不存在就不创建**（那归 `dev`/`acceptance`）。
+- 内容没改就拒绝 → PRD 回到 CR 前状态、失效解除；内容已改就拒绝 → PRD 留在 `IN_REVIEW`，
+  失效继续有效，必须另提一个 CR 才能重新批准。
+- 相关状态与错误码：CR `OPEN`/`APPROVED`/`REJECTED`；
+  `CR_NOT_FOUND`、`CR_NOT_OPEN`、`CR_OPEN`、`BASELINE_INVALIDATED`、`BASELINE_MISSING`、
+  `HASH_MISMATCH`、`INVALID_IMPACT`、`REASON_REQUIRED`、`VALIDATION_FAILED`。
+
 ## 后续能力（尚未实现，遇到就停下来说明）
 
 | 意图 | 正式入口 | 现状 |
 | --- | --- | --- |
-| 改已批准 PRD 的正文或锁定字段 | `flow-core prd cr --id PRD-001 --reason ...` | 未实现（后续 ticket）。**不要**用 `prd update`，会被 `PRD_LOCKED` 拦住 |
-| 从 AC 派生测试用例 | `test-cases.md`（参与 hash） | 可直接写文件，但必须在批准**之前**写完 |
+| 改已批准 PRD 的正文或锁定字段 | `flow-core prd cr create` → 改正文 → `prd cr approve` | **已实现**（见上「变更请求（CR）」）；不要用 `prd update` 绕过 |
+| 从 AC 派生测试用例 | `test-cases.md`（参与 hash） | 可直接写文件，但必须在批准**之前**写完；批准后改动必须走 CR |
 | 拆分过大的 PRD | 新建一个 PRD，旧 PRD 走 CR/`SUPERSEDED` | `SUPERSEDED` 状态已声明，命令属后续 ticket |
+
+> 订正（ticket 04）：上表「改已批准 PRD」一项原文写「未实现（后续 ticket）」，现已实现；
+> 命令形状由占位 `prd cr --id ... --reason ...` 细化为 `prd cr create/list/show/approve/reject`，
+> 并新增 `prd baseline-status`。其余描述（`PRD_LOCKED` 拦截、CR 未实现前停下来问用户）已过时。
 
 ## 命令速查
 
@@ -217,6 +263,11 @@ hash 参与范围（共享设计 §6）：`prd.md` + 存在的 `test-cases.md`�
 | `prd submit-review --id --actor A --confirm [--note T]` | 提交评审 | `DRAFT`/`CHANGES_REQUESTED → IN_REVIEW` |
 | `prd approve --id --actor A --confirm` | 需求负责人批准 + 锁定 hash | `IN_REVIEW → APPROVED` |
 | `prd reject --id --actor A --confirm --reason R` | 拒绝 | `→ REJECTED` |
+| `prd cr create --id --actor A --confirm --reason R [--impact ...] [--body-file F]` | 登记变更 CR | 已建立基线的 PRD → `IN_REVIEW` + 基线失效 |
+| `prd cr approve --id --cr CR-001 --actor A --confirm` | 重新批准 | `IN_REVIEW → APPROVED`，版本 +1、新 hash |
+| `prd cr reject --id --cr CR-001 --actor A --confirm --reason R` | 拒绝变更 | 内容未变 → 回到 CR 前状态；已变 → 留 `IN_REVIEW` |
+| `prd cr list --id [--status S]` / `prd cr show --id --cr CR-001` | CR 清单与详情 | 否 |
+| `prd baseline-status --id` | 基线有效性 + 失效标记 + 被取代的证据 | 否 |
 | `prd show --id` / `prd list [--status S] [--module M]` | 投影与清单 | 否 |
 | `prd verify-hash --id` | 校验基线 hash | 否 |
 

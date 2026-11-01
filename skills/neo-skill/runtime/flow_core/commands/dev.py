@@ -116,9 +116,11 @@ def _start(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resu
                                object=record.id)
 
     directory = workspace.path(development.spec_dir(workspace, record))
+    existing_baseline = development.read_baseline(workspace, record)
     with locks.object_lock(workspace, record.id, command=command, rules_version=rules.version):
         directory.mkdir(parents=True, exist_ok=True)
         created: list[str] = []
+        updated: list[str] = []
         kept: list[str] = []
         for name in development.spec_files(rules):
             path = directory / name
@@ -131,8 +133,17 @@ def _start(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resu
             created.append(rel)
 
         baseline_rel = development.baseline_path(workspace, record)
-        baseline_file = workspace.path(baseline_rel)
-        if baseline_file.is_file():
+        stale = development.baseline_is_stale(existing_baseline, record)
+        if stale and existing_baseline is not None:
+            for name in development.spec_files(rules):
+                path = directory / name
+                if path.is_file() and workspace.rel(path) not in created:
+                    fsutil.atomic_write_text(
+                        path, development.refresh_front_matter(path, record))
+                    updated.append(workspace.rel(path))
+            development.write_baseline(workspace, record)
+            updated.append(baseline_rel)
+        elif existing_baseline is not None:
             kept.append(baseline_rel)
         else:
             development.write_baseline(workspace, record)
@@ -146,6 +157,8 @@ def _start(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resu
 
     for rel in created:
         result.add(rel, "dev", "created")
+    for rel in updated:
+        result.add(rel, "dev", "updated")
     for rel in kept:
         result.add(rel, "dev", "unchanged")
     result.data["prd"] = record.to_dict()

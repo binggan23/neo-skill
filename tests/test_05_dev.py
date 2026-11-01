@@ -517,3 +517,39 @@ def test_scope_check_requires_specs(started: Path) -> None:
 
     assert result.code == 1
     assert "SPEC_NOT_FOUND" in error_codes(result)
+
+
+# --------------------------------------------------------------------------
+# CR 重新批准后按新基线重建（ticket 04 产生的状态，ticket 05 必须能接住）
+# --------------------------------------------------------------------------
+def test_start_rebuilds_baseline_after_cr_reapproval(started: Path) -> None:
+    """模拟 CR 重新批准：PRD 回到 APPROVED + 新版本/新 hash，旧 Spec 基线失效。"""
+    body = prd_dir(started) / "prd.md"
+    write(body, read(body) + "\n## 追加场景说明\n\nCR-001 之后的内容。\n")
+    # CR 重新批准：版本 +1、状态回 APPROVED；hash 由 flow-core 按共享设计 §6 计算。
+    meta_path = prd_dir(started) / "metadata.yaml"
+    meta = yaml.safe_load(read(meta_path))
+    meta.update({"status": "APPROVED", "version": 2})
+    write(meta_path, yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+    new_hash = run_cli(started, "dev", "status", "--prd", "PRD-001").json["data"]["current_hash"]
+    meta["content_hash"] = new_hash
+    write(meta_path, yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+    base_path = spec_dir(started) / BASELINE_FILE
+    data = baseline(started)
+    data["baseline_valid"] = False
+    data["invalidated_by"] = "CR-001"
+    write(base_path, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+
+    result = start(started)
+
+    assert result.code == 0, result
+    assert prd_meta(started)["status"] == "DEVELOPING"
+    rebuilt = baseline(started)
+    assert rebuilt["baseline_hash"] == new_hash
+    assert rebuilt["baseline_version"] == 2
+    assert rebuilt["baseline_valid"] is True
+    assert "invalidated_by" not in rebuilt
+    for name in SPEC_FILES:
+        head = front_matter(spec_dir(started) / name)
+        assert head["baseline_hash"] == new_hash
+        assert head["baseline_version"] == 2

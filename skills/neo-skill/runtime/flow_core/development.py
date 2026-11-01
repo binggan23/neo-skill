@@ -169,6 +169,26 @@ def render_spec(workspace: Workspace, record: metadata.PrdRecord, *, name: str,
     return fsutil.render_front_matter(front, body)
 
 
+def refresh_front_matter(path, record: metadata.PrdRecord) -> str:
+    """把已有产物的 front matter 基线字段更新到 PRD 当前基线，正文原样保留。
+
+    CR 重新批准后 PRD 版本与 hash 都变了，旧 Spec/Plan/Tasks 必须明确标成新基线，
+    否则 ticket 09 的 lint 会看到「孤儿基线」。返回更新后的全文。
+    """
+    text = fsutil.read_text(path)
+    head, body = fsutil.parse_front_matter(text)
+    if not head:
+        return text
+    head = dict(head)
+    head.update({
+        "prd": record.id,
+        "baseline_version": record.version,
+        "baseline_hash": record.content_hash,
+        "module": record.module,
+    })
+    return fsutil.render_front_matter(head, body)
+
+
 def _template_body(workspace: Workspace, name: str) -> str:
     candidates = (
         workspace.templates_dir / name,
@@ -492,10 +512,25 @@ def _check_module(workspace: Workspace, record: metadata.PrdRecord) -> Check:
     )
 
 
+def baseline_is_stale(data: dict[str, Any] | None, record: metadata.PrdRecord) -> bool:
+    """Spec 基线是否与 PRD 当前基线不一致（或已被 CR 标记失效）。"""
+    if not data:
+        return True
+    if not baseline_is_valid(data):
+        return True
+    return bool(data.get("baseline_hash")) and data.get("baseline_hash") != record.content_hash
+
+
 def _check_spec_baseline(workspace: Workspace, record: metadata.PrdRecord) -> Check:
     data = read_baseline(workspace, record)
     if data is None:
         return Check("spec_baseline", True, None, "尚未创建 Spec 基线（首次启动会创建）")
+    stale = baseline_is_stale(data, record)
+    if stale and record.status == "APPROVED":
+        # CR 后重新批准：旧基线失效但 PRD 已换新基线，dev start 会重建 Spec 基线（不阻断）。
+        blocker = data.get("invalidated_by") or "内容变化"
+        return Check("spec_baseline", True, None,
+                     f"旧 Spec 基线已失效（{blocker}），本次启动将按新基线重建")
     if not baseline_is_valid(data):
         blocker = data.get("invalidated_by") or "CR"
         return Check(

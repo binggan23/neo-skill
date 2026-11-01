@@ -23,6 +23,11 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**。
 （外部资料回到一手来源，不停在二手转述。本仓库暂无 `.codegraph/` 索引时直接 `rg` / `read`，不为探索单独建索引。）
 
+### code-review 之后：派 `fix` 修
+
+聚合后只要有一条可执行 finding，就前台 `Agent` + `agent: "fix"`（`.agents/agents/fix.md`，brief 需求与报告格式见其
+prompt），全部 finding 一次修完，修完按同一固定点再跑一轮 `code-review` 复核，最多两轮；`Escalated` 与第二轮复现项交人。
+
 ### 测试与内存
 
 写测试时**先控内存，再谈覆盖率**：

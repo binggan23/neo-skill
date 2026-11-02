@@ -21,7 +21,7 @@
 | 结构化治理检查 | 通过（`lint` error=0、warning=0；`index status` ok） |
 | 试点不修改全局配置、凭据或已有项目 | 通过（529 个文件的前后 sha256 快照完全一致） |
 | Claude Code 真实调用 | 通过（`claude -p` 非交互调用 `project` skill 跑 `doctor`，见 §5） |
-| 远端标准安装命令 `npx skills@latest add binggan23/neo-skill` | **未通过 —— 远端阻塞，见 §7** |
+| 远端标准安装命令 `npx skills@latest add binggan23/neo-skill` | **通过 —— 6 个 Skill 全部发现，见 §7** |
 | 分发包可重现构建（zip 保 `flow-core` 755） | 通过（两次构建字节一致，`unzip` 后可直接执行） |
 
 ---
@@ -229,9 +229,39 @@ claude -p "使用 project skill 对当前项目跑一次环境诊断：执行
 
 ---
 
-## 7. 远端安装阻塞（如实记录）
+## 7. 远端安装（阻塞已解除，已复验通过）
 
-**`npx skills@latest add binggan23/neo-skill` 当前不可用。** 本 ticket 实测：
+> **状态更新（合并推送后）**：`feat/neo-skill-p0` 已合并进 `main` 并推送，
+> 同一条命令现在可用。下列复验为实测输出。
+
+```
+$ npx -y skills@latest add binggan23/neo-skill
+  ✓ ./.agents/skills/acceptance    universal + symlinked: Claude Code
+  ✓ ./.agents/skills/dev           universal + symlinked: Claude Code
+  ✓ ./.agents/skills/neo-skill     universal + symlinked: Claude Code
+  ✓ ./.agents/skills/prd           universal + symlinked: Claude Code
+  ✓ ./.agents/skills/project       universal + symlinked: Claude Code
+  ✓ ./.agents/skills/requirements  universal + symlinked: Claude Code
+└  Done!
+```
+
+6 个 Skill 全部被发现安装。`runtime/` 随 `neo-skill` 一起分发：
+
+```
+$ ls .agents/skills/neo-skill/runtime/
+flow_core/  rules/  templates/  flow-core（775 可执行）
+$ ./.agents/skills/neo-skill/runtime/flow-core --version
+flow-core 0.1.0
+$ ./.agents/skills/neo-skill/runtime/flow-core --root demo init
+OK: init 完成（新建 74 项，无变化 2 项）
+```
+
+**不依赖仓库路径**：把整个安装目录 `cp -r` 到别处后，`flow-core` 仍可执行并正常工作
+（`doctor` 报出的路径指向新位置的 `.agents/skills/neo-skill/runtime/flow-core`）。
+
+### 原始阻塞记录（保留作为历史）
+
+此前 `npx skills@latest add` 返回 `No skills found`，本 ticket 实测：
 
 ```
 $ npx -y skills@latest add binggan23/neo-skill
@@ -256,18 +286,19 @@ $ cd /tmp/npxcheck && git log --oneline -1
 Skill 目前只存在于 `feat/neo-skill-p0`（以及本 ticket 的 `ticket/10-distribution-pilot`）。
 `skills.sh` 扫描的是被 clone 的默认分支，所以它找不到任何 `SKILL.md`。
 
-**解除条件**：把 `feat/neo-skill-p0` 合并进 `main` 并推送后，同一条命令即可生效，
-**不需要**任何额外步骤或自定义安装器。本 ticket 按约束**不 push、不改 remote、不动 `main`**，
-因此这一步留给合并动作完成后再做一次远端复验。
+**解除条件（已满足）**：把 `feat/neo-skill-p0` 合并进 `main` 并推送后，同一条命令即可生效，
+**不需要**任何额外步骤或自定义安装器。ticket 实施时按约束不 push、不改 remote、不动 `main`，
+因此留给最后的合并动作；合并推送后已按上述复验。
 
-**因此本次验收分两层**：
+> 附带发现：本机 OAuth token 只有 `repo` scope，缺 `workflow`，HTTPS 推送会被 GitHub 拒绝
+> （`.github/workflows/ci.yml` 需要 `workflow` scope）。改用 SSH 远端（`git@github.com:...`）推送即可。
 
-1. **本地安装路径（已完整验证）**：`scripts/install-sim.sh` 按 `skills.sh` 的同一套复制语义
-   把 skill 目录装进 `.claude/skills/`，随后全链路与 Claude Code 真调用都跑通（§4、§5）。
-   这证明的是"包内资源完备 + 相对位置解析正确"，即 FR-011 的实质内容。
-2. **远端 `npx` 路径（阻塞中）**：阻塞原因与解除条件如上，**未**在本次验收中通过。
+**验收分两层，两层现已都通过**：
 
-两层不能互相替代，报告不把第 1 层写成第 2 层已通过。
+1. **本地安装路径**：`scripts/install-sim.sh` 按 `skills.sh` 的同一套复制语义把 skill 目录装进
+   `.claude/skills/`，随后全链路与 Claude Code 真调用都跑通（§4、§5）。
+2. **远端 `npx` 路径**：合并推送后实测通过，6 个 Skill 全部被发现，`runtime/` 随包分发，
+   搬移安装目录后仍可用。
 
 ---
 

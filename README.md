@@ -15,10 +15,10 @@ npx skills@latest add binggan23/neo-skill -a claude
 
 升级只使用 `npx skills@latest update`。
 
-> **已知阻塞**：远端默认分支 `main` 目前没有 `skills/` 目录（skill 只在 `feat/neo-skill-p0` 上），
-> 所以上面的 `npx add` 现在会返回 `No skills found`。合并到 `main` 并推送后即生效。
-> 在合并之前，用 `scripts/install-sim.sh` 本地模拟同一套复制语义做验收；
-> 完整实测与边界见 `docs/pilot-report.md`。
+> **已实测可用**：上面两条命令均已验证通过，6 个 Skill 全部被发现安装，
+> `neo-skill/runtime/`（`flow-core`、规则、模板）随包分发，安装后不依赖源码仓库路径。
+> 完整实测证据与兼容性边界见 `docs/pilot-report.md`。
+> 若需在无网络环境离线分发，用 `scripts/build-dist.sh` 产出 `dist/neo-skill-<ver>.zip`。
 
 包内包含 6 个 Skill：路由层 `neo-skill` 与 5 个阶段 Skill
 `project`（初始化/诊断）、`requirements`（需求与排期）、`prd`、`dev`、`acceptance`。
@@ -108,6 +108,6 @@ python3 -m compileall skills/neo-skill/runtime
 
 - `docs/srs.md`：软件需求规格（业务规则权威来源）
 - `docs/hld.md`：高层设计（架构结论）
-- `docs/pilot-report.md`：P0 端到端试点报告（实测证据、未承诺边界、远端阻塞）
+- `docs/pilot-report.md`：P0 端到端试点报告（实测证据、未承诺边界、安装复验）
 - `GLOSSARY.md`：领域词汇
 - `AI产品研发流程与Skill体系.md`：目录、编号与模板原始方案

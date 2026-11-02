@@ -1,0 +1,133 @@
+name: flow-core
+
+# 流程治理的 CI（SRS-FR-084/086/087、SRS-NFR-004/007/009）。
+#
+# 目标不是「让提交变绿」，而是**让违规结果无法通过**：
+#   - 语法检查（compileall）失败 → 作业失败；
+#   - 每一批黑盒测试失败 → 作业失败（按文件循环，单文件失败立即中断）；
+#   - 在临时初始化项目上跑 `doctor --strict` 与 `lint --json`，**非零退出码即失败**。
+#
+# 注意（如实呈现能力边界，SRS §9）：lint/CI 是**流程治理**，不是不可绕过的安全边界。
+# 它能发现「有人绕过 Skill 直接改文件」留下的不一致，但无法实时阻止这种编辑；
+# 真正的强制手段是「人工决策必须带身份与确认记录」+ 把这些检查接入合并流程。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flow-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: py${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # P0 只在 Linux 认证（SRS-NFR-001），Python 3.11 起（SRS-NFR-002）
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 安装依赖（仅 PyYAML 与 pytest）
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml pytest
+
+      - name: 环境自检（Python / Node 版本要求）
+        run: |
+          python --version
+          node --version || echo "node 未安装（仅安装 Skill 时需要）"
+
+      - name: 语法检查（compileall）
+        run: python -m compileall -q skills/neo-skill/runtime
+
+      - name: 黑盒测试（按文件循环）
+        # 不跑 `pytest tests/` 全量：规模夹具与单文件隔离都按批次来（共享设计 §10）。
+        # 单文件失败立即中断 -> 非零退出码 -> 作业失败。
+        run: |
+          set -euo pipefail
+          for f in tests/test_01_*.py tests/test_02_*.py tests/test_03_*.py \
+                   tests/test_04_*.py tests/test_05_*.py tests/test_06_*.py \
+                   tests/test_07_*.py tests/test_08_*.py tests/test_09_*.py; do
+            echo "=== $f ==="
+            python -m pytest "$f" -q
+          done
+
+      - name: 在临时初始化项目上跑 doctor 与 lint
+        # 「初始化 → 确认团队与约束 → 诊断 → 结构检查」是每个真实项目的开工路径，
+        # 必须在 CI 上真的走一遍。注意：刚 init 的项目 team.md / constitution.md 是
+        # confirmed: false，lint 会（正确地）报 TEAM_NOT_CONFIGURED 与
+        # CONSTITUTION_NOT_CONFIRMED 并退出 1；所以这里先把这两项人工确认落下来，
+        # 再看「治理完成的项目」是否干净。任一步非零退出 → 作业失败。
+        run: |
+          set -euo pipefail
+          WORKDIR="$(mktemp -d)"
+          FLOW_CORE="$PWD/skills/neo-skill/runtime/flow-core"
+          python "$FLOW_CORE" --root "$WORKDIR" init --json > /dev/null
+
+          # 先人工确认团队与项目约束（这两步在真实项目里由项目负责人完成）
+          printf '%s\n' \
+            '---' \
+            'confirmed: true' \
+            'confirmed_by: ci' \
+            'confirmed_at: 2026-01-01T00:00:00+00:00' \
+            'members:' \
+            '  - {id: alice, name: 爱丽丝, roles: [requirement_owner, project_owner]}' \
+            '  - {id: bob, name: 鲍勃, roles: [stakeholder]}' \
+            '  - {id: carol, name: 卡罗尔, roles: [developer, tester]}' \
+            '---' \
+            '' \
+            '# 团队与职责' \
+            '' \
+            'CI 用的固定团队配置。' \
+            > "$WORKDIR/00-management/team.md"
+
+          printf '%s\n' \
+            '---' \
+            'confirmed: true' \
+            'confirmed_by: ci' \
+            'confirmed_at: 2026-01-01T00:00:00+00:00' \
+            '---' \
+            '' \
+            '# 项目约束（constitution）' \
+            '' \
+            'Python 3.11+，仅使用标准库与 PyYAML。' \
+            > "$WORKDIR/.specify/constitution.md"
+
+          python "$FLOW_CORE" --root "$WORKDIR" doctor --json
+          python "$FLOW_CORE" --root "$WORKDIR" lint --json
+          python "$FLOW_CORE" --root "$WORKDIR" index generate --json > /dev/null
+          python "$FLOW_CORE" --root "$WORKDIR" lint --json
+          echo "doctor 与 lint 均以退出码 0 结束（含索引生成后复检）"
+
+      - name: 违规必须被非零退出码拦住（负向验证）
+        # 若 lint 在存在违规时仍返回 0，流程治理就是装饰品。这里显式验证一次失败传播。
+        run: |
+          set -euo pipefail
+          WORKDIR="$(mktemp -d)"
+          FLOW_CORE="$PWD/skills/neo-skill/runtime/flow-core"
+          python "$FLOW_CORE" --root "$WORKDIR" init --json > /dev/null
+          rm -f "$WORKDIR/02-definition/mvp-scope.md"
+          REPORT="$WORKDIR/lint-report.json"
+          if python "$FLOW_CORE" --root "$WORKDIR" lint --json > "$REPORT"; then
+            echo "::error::lint 在有缺失产物时仍然返回 0，违规结果没有被拦住"
+            cat "$REPORT"
+            exit 1
+          fi
+          grep -q "MISSING_REQUIRED_PATH" "$REPORT"
+          echo "lint 以非零退出码报告了 MISSING_REQUIRED_PATH"

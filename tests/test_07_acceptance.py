@@ -1,0 +1,773 @@
+"""ticket 07：人工验收（Demo/checklist、逐条记录、建议与确认分离、条件通过、结论失效）。
+
+覆盖 ticket 07 验收项：prepare 生成 Demo 与逐条 AC checklist、AC 条数与 PRD 一致、
+建议与人工确认分离（只有 suggestion 时 approve 失败）、错误身份、
+全部 pass 才 approve、不通过退回 DEVELOPING、阻塞/有条件通过不能 ACCEPTED、
+验收报告字段完整、验收版本变化使结论失效、prepare 前置状态、失败零副作用。
+
+全部通过 `run_cli` 进程边界观察行为；验证命令一律极轻量（`python3 -c`）。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+
+from conftest import read, run_cli, write
+from helpers_03 import ENV, req_meta
+from helpers_07 import (
+    AC_1,
+    AC_2,
+    AC_3,
+    ALL_ACS,
+    PRD_ID,
+    acceptance_dir,
+    approve,
+    approved,
+    checklist_md,
+    checklist_yaml,
+    demo_md,
+    developing,
+    error_codes,
+    call,
+    items_by_ac,
+    prepared as prepare_project,
+    prd_metadata_text,
+    raw_logs,
+    ready,
+    record,
+    record_all_pass,
+    report_md,
+    run,
+)
+
+# --------------------------------------------------------------------------
+# 夹具：把项目逐层推进到 READY_FOR_ACCEPTANCE（逻辑在 tests/helpers_07.py）
+# --------------------------------------------------------------------------
+@pytest.fixture()
+def prepared(inited_project: Path) -> Path:
+    return prepare_project(inited_project)
+
+
+# --------------------------------------------------------------------------
+# prepare：Demo 材料 + 逐条 AC checklist
+# --------------------------------------------------------------------------
+def test_prepare_generates_demo_and_checklist(prepared: Path) -> None:
+    directory = acceptance_dir(prepared)
+    assert (directory / "demo.md").is_file()
+    assert (directory / "checklist.md").is_file()
+    assert (directory / "checklist.yaml").is_file()
+
+    demo = demo_md(prepared)
+    assert "PRD-001" in demo
+    assert "## 访问方式" in demo
+    assert "## 操作步骤" in demo
+    # 场景与 AC 都从 PRD 与验证证据来；缺信息的地方保留 TODO，不伪造访问地址/步骤
+    for scenario in ("SC-RES-01", "SC-RES-02"):
+        assert scenario in demo
+    for ac in ALL_ACS:
+        assert ac in demo
+    # 每条 AC 的操作步骤都必须留占位（不能只靠文件头的固定 TODO 满足断言）
+    steps = demo.split("## 操作步骤", 1)[1].split("## 已知限制", 1)[0]
+    assert steps.count("<!-- TODO") >= len(ALL_ACS)
+    for ac in ALL_ACS:
+        assert f"**{ac}**" in steps
+
+
+def test_prepare_checklist_rows_match_prd_acs(prepared: Path) -> None:
+    data = checklist_yaml(prepared)
+    assert [item["ac"] for item in data["items"]] == list(ALL_ACS)
+    assert all(item["conclusion"] == "pending" for item in data["items"])
+    # 每条都带上验证证据（机器可读），供人工核对
+    assert all(item["verification"] == "pass" for item in data["items"])
+    assert all(item["verification_evidence"] for item in data["items"])
+
+    table = checklist_md(prepared)
+    assert "| AC | 场景 | 结论 | 证据 | 记录人 |" in table
+    for ac in ALL_ACS:
+        assert f"| {ac} |" in table
+    assert "pending" in table
+
+
+def test_prepare_records_acceptance_baseline(prepared: Path) -> None:
+    data = checklist_yaml(prepared)
+    assert data["prd"] == PRD_ID
+    assert data["prd_hash"].startswith("sha256:")
+    assert data["code_version"]
+    assert data["verification_digest"].startswith("sha256:")
+    assert data["prepared_at"] == "2026-03-01T10:00:00+08:00"
+    # 基线必须来自 PRD 与 verification.json 的真实值，不是常量
+    meta = yaml.safe_load(prd_metadata_text(prepared))
+    assert data["prd_hash"] == meta["content_hash"]
+    assert data["verification_digest"] == json.loads(
+        read(prepared / "06-specs/resume/PRD-001-batch-parse/verification.json")
+    )["submission"]["verification_digest"]
+
+
+def test_prepare_recomputes_baseline_after_code_change(prepared: Path) -> None:
+    before = checklist_yaml(prepared)
+
+    write(prepared / "src/app.py", "print('new code')\n")
+    run(prepared, "acceptance", "prepare", "--prd", PRD_ID)
+
+    after = checklist_yaml(prepared)
+    assert after["code_version"] != before["code_version"]
+    assert after["prd_hash"] == before["prd_hash"]  # PRD 未变
+    # verification_digest 只覆盖原始输出，代码变化不影响它（证据本身没被替换）
+    assert after["verification_digest"] == before["verification_digest"]
+
+
+@pytest.mark.parametrize("stage", ["developing", "approved"])
+def test_prepare_requires_ready_for_acceptance(stage: str, inited_project: Path) -> None:
+    project = inited_project
+    if stage == "developing":
+        developing(project)
+    else:
+        approved(project)
+    before = prd_metadata_text(project)
+
+    result = run(project, "acceptance", "prepare", "--prd", PRD_ID, expect=1)
+
+    assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
+    assert not acceptance_dir(project).exists()
+    assert prd_metadata_text(project) == before  # 失败零副作用
+
+
+def test_prepare_allowed_after_acceptance_for_review(prepared: Path) -> None:
+    """已 ACCEPTED 仍允许 prepare（复核用），且不改状态。"""
+    record_all_pass(prepared)
+    approve(prepared)
+    before = prd_metadata_text(prepared)
+
+    result = run(prepared, "acceptance", "prepare", "--prd", PRD_ID)
+
+    assert result.code == 0, result
+    assert prd_metadata_text(prepared) == before
+
+
+def test_prepare_is_idempotent_and_keeps_human_conclusions(prepared: Path) -> None:
+    record(prepared, AC_1, "pass", evidence="人工演示通过")
+    before = read(acceptance_dir(prepared) / "checklist.yaml")
+
+    result = run(prepared, "acceptance", "prepare", "--prd", PRD_ID)
+
+    assert result.code == 0
+    actions = result.actions()
+    assert actions["07-acceptance/resume/PRD-001-batch-parse/checklist.md"] == "unchanged"
+    assert read(acceptance_dir(prepared) / "checklist.yaml") == before
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pass"
+
+
+def test_prepare_resets_conclusions_when_baseline_changes(prepared: Path) -> None:
+    record_all_pass(prepared)
+    assert all(item["conclusion"] == "pass" for item in items_by_ac(prepared).values())
+
+    write(prepared / "src/app.py", "print('late change')\n")
+    result = run(prepared, "acceptance", "prepare", "--prd", PRD_ID)
+
+    items = items_by_ac(prepared)
+    assert all(item["conclusion"] == "pending" for item in items.values())
+    # 旧结论保留在 superseded 里，便于审计
+    assert items[AC_1]["superseded"]
+    assert items[AC_1]["superseded"][-1]["conclusion"] == "pass"
+    assert items[AC_1]["superseded"][-1]["recorded_by"] == "alice"
+    # 重新 prepare 后清单跟到新基线（因此不再 stale），旧结论已被归档重置
+    assert result.json["data"]["checklist"]["baseline_stale"] is False
+    # 基线已变：旧证据不得沿用，approve 必须被拦下
+    blocked = approve(prepared, expect=1)
+    assert "BASELINE_STALE" in error_codes(blocked)
+    assert "ACCEPTED" not in prd_metadata_text(prepared)
+
+
+# --------------------------------------------------------------------------
+# record：人工逐条结论
+# --------------------------------------------------------------------------
+def test_record_writes_human_conclusion_and_evidence(prepared: Path) -> None:
+    result = record(prepared, AC_1, "pass", evidence="现场演示：100 份 3 分钟完成",
+                    note="网络抖动一次")
+
+    data = checklist_yaml(prepared)
+    item = items_by_ac(prepared)[AC_1]
+    assert item["conclusion"] == "pass"
+    assert item["evidence"] == "现场演示：100 份 3 分钟完成"
+    assert item["note"] == "网络抖动一次"
+    assert item["recorded_by"] == "alice"
+    assert item["recorded_at"] == "2026-03-01T10:00:00+08:00"
+    assert data["updated_at"] == "2026-03-01T10:00:00+08:00"
+    assert result.json["data"]["all_pass"] is False
+    assert f"| {AC_1} |" in checklist_md(prepared)
+    assert "现场演示：100 份 3 分钟完成" in checklist_md(prepared)
+    # 只动这一条：其余 AC 仍是 pending、没有记录人（不得批量写结论）
+    for other in (AC_2, AC_3):
+        assert items_by_ac(prepared)[other]["conclusion"] == "pending"
+        assert items_by_ac(prepared)[other]["evidence"] is None
+        assert items_by_ac(prepared)[other]["recorded_by"] is None
+
+
+def test_record_accepts_any_team_member(prepared: Path) -> None:
+    """验收人不必是需求负责人：任何有职责的团队成员都能记录，但必须登记身份。"""
+    result = record(prepared, AC_2, "pass", actor="carol", evidence="开发自测演示")
+
+    assert result.code == 0
+    assert items_by_ac(prepared)[AC_2]["recorded_by"] == "carol"
+
+
+def test_record_rejects_unknown_actor_without_side_effects(prepared: Path) -> None:
+    before = read(acceptance_dir(prepared) / "checklist.yaml")
+    before_md = checklist_md(prepared)
+
+    result = record(prepared, AC_1, "pass", actor="nobody", expect=1)
+
+    assert "ACTOR_UNKNOWN" in error_codes(result)
+    assert read(acceptance_dir(prepared) / "checklist.yaml") == before
+    assert checklist_md(prepared) == before_md
+    assert not list((prepared / ".neo-skill/locks").glob("*.lock"))
+
+
+def test_record_fail_requires_evidence(prepared: Path) -> None:
+    """不通过/阻塞必须给证据：只写结论无法复核。"""
+    result = record(prepared, AC_1, "blocked", expect=1)
+
+    assert "EVIDENCE_REQUIRED" in error_codes(result)
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pending"
+
+
+def test_record_rejects_unknown_ac(prepared: Path) -> None:
+    result = record(prepared, "AC-RES-09-09", "pass", expect=1)
+
+    assert "UNKNOWN_AC" in error_codes(result)
+
+
+def test_record_requires_ready_state(inited_project: Path) -> None:
+    """非 READY_FOR_ACCEPTANCE 时不能记录验收结论。"""
+    developing(inited_project)
+
+    result = record(inited_project, AC_1, "pass", expect=1)
+
+    assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
+    assert not acceptance_dir(inited_project).exists()
+
+
+# --------------------------------------------------------------------------
+# suggest：AI 建议 ≠ 人工确认
+# --------------------------------------------------------------------------
+def test_suggestion_alone_never_approves(prepared: Path) -> None:
+    for ac in ALL_ACS:
+        result = run(prepared, "acceptance", "suggest", "--prd", PRD_ID, "--ac", ac,
+                     "--result", "pass", "--reason", "验证证据显示通过")
+        assert result.code == 0, result
+
+    items = items_by_ac(prepared)
+    assert all(item["suggestion"] == "pass" for item in items.values())
+    assert all(item["conclusion"] == "pending" for item in items.values())
+
+    result = approve(prepared, expect=1)
+
+    assert "AC_NOT_ALL_PASSED" in error_codes(result)
+    assert prd_metadata_text(prepared).count("status: ACCEPTED") == 0
+    assert not (acceptance_dir(prepared) / "report.md").exists()
+
+
+def test_suggestion_does_not_overwrite_human_conclusion(prepared: Path) -> None:
+    record(prepared, AC_1, "pass", evidence="人工确认通过")
+
+    result = run(prepared, "acceptance", "suggest", "--prd", PRD_ID, "--ac", AC_1,
+                 "--result", "fail", "--reason", "验证证据与我看到的不一致")
+
+    assert result.code == 0, result
+    item = items_by_ac(prepared)[AC_1]
+    assert item["conclusion"] == "pass"
+    assert item["evidence"] == "人工确认通过"
+    assert item["suggestion"] == "fail"
+    assert item["suggestion_reason"] == "验证证据与我看到的不一致"
+    # 建议与人工结论冲突只提示，不改结论
+    assert result.json["data"]["suggestion_conflict"] is True
+    assert item["suggestion_conflict"] is True
+
+
+# --------------------------------------------------------------------------
+# approve：全部通过 + 需求负责人显式确认
+# --------------------------------------------------------------------------
+def test_approve_requires_all_ac_pass(prepared: Path) -> None:
+    record(prepared, AC_1, "pass")
+    record(prepared, AC_2, "fail", evidence="上传中断")
+    # AC_3 未记录，仍是 pending
+
+    result = approve(prepared, expect=1)
+
+    assert "AC_NOT_ALL_PASSED" in error_codes(result)
+    pending = {item["ac"] for item in result.json["data"]["pending"]}
+    assert AC_2 in pending
+    assert AC_3 in pending
+    assert result.json["next_actions"]
+    assert "READY_FOR_ACCEPTANCE" in prd_metadata_text(prepared)
+
+
+def test_approve_rejects_non_requirement_owner(prepared: Path) -> None:
+    record_all_pass(prepared)
+    before = prd_metadata_text(prepared)
+
+    result = approve(prepared, actor="bob", expect=1)
+
+    assert "ROLE_MISMATCH" in error_codes(result)
+    assert prd_metadata_text(prepared) == before
+    assert not (acceptance_dir(prepared) / "report.md").exists()
+    assert not list((prepared / ".neo-skill/locks").glob("*.lock"))
+
+
+def test_approve_requires_actor_and_confirm(prepared: Path) -> None:
+    record_all_pass(prepared)
+    before = prd_metadata_text(prepared)
+
+    # 缺 --confirm
+    no_confirm = call(prepared, "acceptance", "approve", "--prd", PRD_ID, "--actor", "alice")
+    assert no_confirm.code == 1
+    assert "CONFIRMATION_REQUIRED" in error_codes(no_confirm)
+
+    # 缺 --actor
+    no_actor = call(prepared, "acceptance", "approve", "--prd", PRD_ID, "--confirm")
+    assert no_actor.code == 1
+    assert "CONFIRMATION_REQUIRED" in error_codes(no_actor)
+
+    # 两者都缺
+    neither = call(prepared, "acceptance", "approve", "--prd", PRD_ID)
+    assert neither.code == 1
+    assert "CONFIRMATION_REQUIRED" in error_codes(neither)
+
+    assert prd_metadata_text(prepared) == before
+    assert not (acceptance_dir(prepared) / "report.md").exists()
+
+
+def test_approve_moves_prd_to_accepted_with_full_report(prepared: Path) -> None:
+    record_all_pass(prepared)
+
+    result = approve(prepared, extra=("--leftover", "导出文件名格式待统一下一版"))
+
+    assert result.code == 0, result
+    data = result.json["data"]
+    assert data["prd"]["status"] == "ACCEPTED"
+    assert data["accepted"] is True
+    assert data["next_step"] == "closeout"
+    assert any("closeout" in item for item in result.json["next_actions"])
+    assert any("未" in item and "DONE" in item for item in result.json["next_actions"])
+
+    # metadata：acceptance 记录 + 历史 + 人工确认
+    meta = checklist_yaml(prepared)
+    acceptance = result.json["data"]["acceptance"]
+    assert acceptance["approved_by"] == "alice"
+    assert acceptance["approved_at"] == "2026-03-01T10:00:00+08:00"
+    assert acceptance["prd_hash"].startswith("sha256:")
+    assert acceptance["code_version"]
+    assert acceptance["checklist_digest"].startswith("sha256:")
+    assert acceptance["verification_digest"].startswith("sha256:")
+    assert acceptance["leftovers"] == ["导出文件名格式待统一下一版"]
+    assert data["closeout"] is None
+    assert meta["decisions"][-1]["decision"] == "approved"
+
+    text = prd_metadata_text(prepared)
+    assert "status: ACCEPTED" in text
+    assert "approved_by: alice" in text
+    assert "closeout: null" in text
+    # 主需求不得被置 DONE（那是收尾的事）
+    assert req_meta(prepared)["status"] == "IN_PRD"
+
+    # 报告 front matter 必须是精确值，而不是「文件里某处出现过这个字符串」
+    head, body = _split_front_matter(report_md(prepared))
+    assert head["decision"] == "approved"
+    assert head["accepted"] is True
+    assert head["approved_by"] == "alice"
+    assert head["approved_at"] == "2026-03-01T10:00:00+08:00"
+    assert head["role"] == "requirement_owner"
+    assert head["prd_hash"] == acceptance["prd_hash"]
+    assert head["code_version"] == acceptance["code_version"]
+    assert head["verification_digest"] == acceptance["verification_digest"]
+    assert head["checklist_digest"] == acceptance["checklist_digest"]
+    # 逐条结论表格：每条 AC 一行且结论列为 pass
+    rows = _table_rows(body)
+    assert [row.get("AC") for row in rows] == list(ALL_ACS)
+    assert all(row.get("结论") == "pass" for row in rows)
+    assert all(row.get("记录人") == "alice" for row in rows)
+    assert "导出文件名格式待统一下一版" in body
+    assert "收尾" in body
+    # 报告明确「已确认通过但收尾未完成」，不得暗示需求已完成
+    assert "已确认通过，收尾未完成" in body
+    assert "主需求尚未 DONE" in body
+
+
+def _split_front_matter(text: str) -> tuple[dict, str]:
+    """拆分 front matter（报告是 YAML front matter + 正文表格）。"""
+    assert text.startswith("---\n"), text[:40]
+    head, body = text[4:].split("\n---\n", 1)
+    return yaml.safe_load(head), body
+
+
+def _table_rows(body: str) -> list[dict]:
+    """把报告里的第一个 Markdown 表格按表头解析成 dict 列表。"""
+    lines = [line for line in body.splitlines() if line.startswith("|")]
+    header: list[str] = []
+    rows: list[dict] = []
+    for line in lines:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if not header:
+            header = cells
+            continue
+        if set("".join(cells)) <= {"-", " ", ":"}:
+            continue
+        rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def test_approve_records_history_and_confirmation(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+
+    import yaml
+
+    meta = yaml.safe_load(prd_metadata_text(prepared))
+    assert meta["status"] == "ACCEPTED"
+    assert meta["history"][-1]["action"] == "acceptance.approve"
+    assert meta["history"][-1]["from"] == "READY_FOR_ACCEPTANCE"
+    assert meta["history"][-1]["to"] == "ACCEPTED"
+    assert meta["confirmations"][-1]["by"] == "alice"
+    assert meta["confirmations"][-1]["role"] == "requirement_owner"
+    assert meta["confirmations"][-1]["decision"] == "acceptance.approve"
+
+
+def test_approve_failure_has_no_side_effects(prepared: Path) -> None:
+    record(prepared, AC_1, "pass")
+    before_meta = prd_metadata_text(prepared)
+    before_checklist = read(acceptance_dir(prepared) / "checklist.yaml")
+    before_md = checklist_md(prepared)
+
+    approve(prepared, expect=1)
+
+    assert prd_metadata_text(prepared) == before_meta
+    assert read(acceptance_dir(prepared) / "checklist.yaml") == before_checklist
+    assert checklist_md(prepared) == before_md
+    assert not (acceptance_dir(prepared) / "report.md").exists()
+    assert not list((prepared / ".neo-skill/locks").glob("*.lock"))
+
+
+def test_suggest_allowed_after_acceptance_but_record_is_not(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+
+    suggested = call(prepared, "acceptance", "suggest", "--prd", PRD_ID, "--ac", AC_1,
+                     "--result", "pass", "--reason", "复核证据一致")
+    assert suggested.code == 0, suggested
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pass"
+
+    result = record(prepared, AC_1, "pass", evidence="再记一次", expect=1)
+    assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
+
+
+# --------------------------------------------------------------------------
+# 不通过 / 阻塞 / 有条件通过
+# --------------------------------------------------------------------------
+def test_reject_returns_prd_to_developing(prepared: Path) -> None:
+    record(prepared, AC_1, "pass")
+    record(prepared, AC_2, "fail", evidence="上传 100 份时中断")
+
+    result = run(prepared, "acceptance", "reject", "--prd", PRD_ID, "--actor", "alice",
+                 "--confirm", "--reason", "批量上传在 100 份时中断",
+                 "--leftover", "需要补断点续传")
+
+    assert result.code == 0, result
+    assert result.json["data"]["prd"]["status"] == "DEVELOPING"
+    import yaml
+
+    meta = yaml.safe_load(prd_metadata_text(prepared))
+    assert meta["status"] == "DEVELOPING"
+    assert meta["acceptance"] is None
+    assert meta["history"][-1]["action"] == "acceptance.reject"
+    assert meta["confirmations"][-1]["by"] == "alice"
+    report = report_md(prepared)
+    assert "不通过" in report
+    assert "批量上传在 100 份时中断" in report
+    assert "需要补断点续传" in report
+    assert any("dev verify" in item or "dev start" in item
+               for item in result.json["next_actions"])
+
+
+def test_blocked_ac_cannot_be_accepted(prepared: Path) -> None:
+    record(prepared, AC_1, "pass")
+    record(prepared, AC_2, "pass")
+    record(prepared, AC_3, "blocked", evidence="外部存储环境不可用")
+
+    result = approve(prepared, expect=1)
+
+    assert "AC_NOT_ALL_PASSED" in error_codes(result)
+    assert [item["ac"] for item in result.json["data"]["pending"]] == [AC_3]
+    assert result.json["data"]["pending"][0]["conclusion"] == "blocked"
+    assert "READY_FOR_ACCEPTANCE" in prd_metadata_text(prepared)
+    # 有 fail/blocked → 必须给「退回开发」或「有条件通过」的下一步
+    actions = result.json["next_actions"]
+    assert any("acceptance reject" in item for item in actions)
+    assert any("acceptance conditional" in item for item in actions)
+
+
+def test_conditional_pass_does_not_reach_accepted(prepared: Path) -> None:
+    record_all_pass(prepared)
+
+    result = run(prepared, "acceptance", "conditional", "--prd", PRD_ID, "--actor", "alice",
+                 "--confirm", "--reason", "核心场景通过，导出文件名格式待统一",
+                 "--leftover", "导出文件名格式下一版统一")
+
+    assert result.code == 0, result
+    data = result.json["data"]
+    assert data["conditional"] is True
+    assert data["accepted"] is False
+    assert data["prd"]["status"] == "READY_FOR_ACCEPTANCE"
+    assert "ACCEPTED" not in prd_metadata_text(prepared)
+    assert data["leftovers"] == ["导出文件名格式下一版统一"]
+    assert any("reject" in item for item in result.json["next_actions"])
+    assert any("record" in item or "prepare" in item for item in result.json["next_actions"])
+
+    report = report_md(prepared)
+    assert "有条件通过" in report
+    assert "导出文件名格式下一版统一" in report
+
+    # 有条件通过之后不能靠 approve 直接进 ACCEPTED（遗留问题未处理）
+    blocked = approve(prepared, expect=1)
+    assert "ACCEPTANCE_CONDITIONAL" in error_codes(blocked)
+    # 全部 AC 已 pass，因此不应再报「AC 未通过」
+    assert "AC_NOT_ALL_PASSED" not in error_codes(blocked)
+    assert "ACCEPTED" not in prd_metadata_text(prepared)
+
+
+def test_conditional_can_be_resolved_by_recording_again(prepared: Path) -> None:
+    record_all_pass(prepared)
+    run(prepared, "acceptance", "conditional", "--prd", PRD_ID, "--actor", "alice",
+        "--confirm", "--reason", "导出格式待统一", "--leftover", "导出文件名格式下一版统一")
+    # 遗留问题处理完、人重新记录结论 → 条件决定失效（遗留问题仍可查）
+    record(prepared, AC_1, "pass", evidence="导出格式已按约定调整并复核")
+
+    result = approve(prepared)
+
+    assert result.code == 0, result
+    assert result.json["data"]["prd"]["status"] == "ACCEPTED"
+    assert result.json["data"]["conditional"] is False
+    # 遗留问题不因解除条件而消失
+    assert "导出文件名格式下一版统一" in report_md(prepared)
+
+
+def test_status_exposes_closeout_gate_for_ticket08(prepared: Path) -> None:
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+    assert result.json["data"]["closeout"]["ok"] is False
+    assert "ACCEPTANCE_MISSING" in result.json["data"]["closeout"]["problems"]
+
+    record_all_pass(prepared)
+    approve(prepared, extra=("--leftover", "导出格式下一版统一"))
+
+    done = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+    closeout = done.json["data"]["closeout"]
+    assert closeout["ok"] is True
+    assert closeout["acceptance"]["approved_by"] == "alice"
+    assert closeout["leftovers"] == ["导出格式下一版统一"]
+    assert closeout["checklist_digest"].startswith("sha256:")
+
+
+def test_conditional_requires_reason(prepared: Path) -> None:
+    record_all_pass(prepared)
+
+    result = run(prepared, "acceptance", "conditional", "--prd", PRD_ID, "--actor", "alice",
+                 "--confirm", "--leftover", "导出格式下一版统一", expect=1)
+
+    assert "REASON_REQUIRED" in error_codes(result)
+    assert "ACCEPTED" not in prd_metadata_text(prepared)
+
+
+def test_conditional_requires_leftover(prepared: Path) -> None:
+    record_all_pass(prepared)
+
+    result = run(prepared, "acceptance", "conditional", "--prd", PRD_ID, "--actor", "alice",
+                 "--confirm", "--reason", "核心场景通过但导出格式待统一", expect=1)
+
+    assert "LEFTOVER_REQUIRED" in error_codes(result)
+    assert "ACCEPTED" not in prd_metadata_text(prepared)
+
+
+# --------------------------------------------------------------------------
+# status：逐条状态 + 结论是否失效
+# --------------------------------------------------------------------------
+def test_status_reports_stale_baseline_before_reprepare(prepared: Path) -> None:
+    record_all_pass(prepared)
+    write(prepared / "src/app.py", "print('late change')\n")
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+
+    assert result.json["data"]["baseline_stale"] is True
+    assert "CODE_CHANGED" in result.json["data"]["baseline_reasons"]
+
+
+def test_status_reports_checklist_and_acceptance(prepared: Path) -> None:
+    record(prepared, AC_1, "pass", evidence="演示通过")
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+
+    data = result.json["data"]
+    assert data["prepared"] is True
+    assert [item["ac"] for item in data["items"]] == list(ALL_ACS)
+    assert data["all_pass"] is False
+    assert data["conditional"] is False
+    assert data["acceptance"] is None
+    assert data["stale"] is False
+
+
+@pytest.mark.parametrize("argv", [
+    ("record", "--ac", AC_1, "--result", "pass", "--actor", "alice"),
+    ("suggest", "--ac", AC_1, "--result", "pass"),
+    ("approve", "--actor", "alice", "--confirm"),
+    ("reject", "--actor", "alice", "--confirm", "--reason", "不合格"),
+    ("conditional", "--actor", "alice", "--confirm", "--reason", "有条件",
+     "--leftover", "遗留"),
+])
+def test_commands_require_prepare_first(inited_project: Path, argv: tuple[str, ...]) -> None:
+    """没有 checklist.yaml 就操作验收结论 → ACCEPTANCE_NOT_PREPARED，且不写任何东西。"""
+    ready(inited_project)
+
+    result = call(inited_project, "acceptance", *argv, "--prd", PRD_ID)
+
+    assert result.code == 1, result
+    assert "ACCEPTANCE_NOT_PREPARED" in error_codes(result)
+    assert not acceptance_dir(inited_project).exists()
+    assert "READY_FOR_ACCEPTANCE" in prd_metadata_text(inited_project)
+
+
+def test_record_accepts_one_ac_per_call(prepared: Path) -> None:
+    """一次只能记录一条 AC：防止批量填 pass 绕过逐条核对。"""
+    result = record(prepared, f"{AC_1},{AC_2}", "pass", evidence="批量通过", expect=1)
+
+    assert "AC_REQUIRED" in error_codes(result)
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pending"
+    assert items_by_ac(prepared)[AC_2]["conclusion"] == "pending"
+
+
+def test_suggest_rejects_unknown_ac(prepared: Path) -> None:
+    result = run(prepared, "acceptance", "suggest", "--prd", PRD_ID, "--ac", "AC-RES-09-09",
+                 "--result", "pass", expect=1)
+
+    assert "UNKNOWN_AC" in error_codes(result)
+
+
+def test_status_before_prepare_is_read_only(inited_project: Path) -> None:
+    ready(inited_project)
+
+    result = run(inited_project, "acceptance", "status", "--prd", PRD_ID)
+
+    assert result.code == 0, result
+    assert result.json["data"]["prepared"] is False
+    assert result.json["data"]["all_pass"] is False
+    assert not acceptance_dir(inited_project).exists()
+
+
+def test_approved_acceptance_reports_live_baseline(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID)
+
+    data = result.json["data"]
+    assert result.code == 0, result
+    assert data["all_pass"] is True
+    assert data["stale"] is False
+    assert data["acceptance"]["approved_by"] == "alice"
+    assert data["next_step"] == "closeout"
+
+
+def test_prd_change_invalidates_acceptance(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+    text = read(prepared / "04-prds/resume/PRD-001-batch-parse/prd.md")
+    write(prepared / "04-prds/resume/PRD-001-batch-parse/prd.md",
+          text + "\n<!-- 变更：范围调整 -->\n")
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID, expect=1)
+
+    assert "ACCEPTANCE_STALE" in error_codes(result)
+    assert result.json["data"]["stale"] is True
+    assert "PRD_CHANGED" in result.json["data"]["stale_reasons"]
+    assert result.json["next_actions"]
+
+
+def test_code_change_invalidates_acceptance(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+    write(prepared / "src/app.py", "print('changed after acceptance')\n")
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID, expect=1)
+
+    assert "ACCEPTANCE_STALE" in error_codes(result)
+    assert "CODE_CHANGED" in result.json["data"]["stale_reasons"]
+
+
+def test_evidence_replacement_invalidates_acceptance(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+    log = raw_logs(prepared)[0]
+    write(log, "$ 伪造输出\n--- stdout ---\n全部通过\n")
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID, expect=1)
+
+    assert "ACCEPTANCE_STALE" in error_codes(result)
+    assert "EVIDENCE_CHANGED" in result.json["data"]["stale_reasons"]
+
+
+def test_evidence_deletion_invalidates_acceptance(prepared: Path) -> None:
+    """删掉原始输出同样失效：判据是「逐文件重算 hash」，不是只看记录里的摘要。"""
+    record_all_pass(prepared)
+    approve(prepared)
+    raw_logs(prepared)[0].unlink()
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID, expect=1)
+
+    assert "ACCEPTANCE_STALE" in error_codes(result)
+    assert "EVIDENCE_CHANGED" in result.json["data"]["stale_reasons"]
+
+
+def test_checklist_change_after_approval_invalidates_acceptance(prepared: Path) -> None:
+    record_all_pass(prepared)
+    approve(prepared)
+
+    # 越过 CLI 直接改人工结论：报告里的 checklist 摘要必须能发现
+    import yaml
+
+    path = acceptance_dir(prepared) / "checklist.yaml"
+    data = yaml.safe_load(read(path))
+    for item in data["items"]:
+        if item["ac"] == AC_3:
+            item["conclusion"] = "fail"
+    write(path, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+
+    result = run(prepared, "acceptance", "status", "--prd", PRD_ID, expect=1)
+    assert "ACCEPTANCE_STALE" in error_codes(result)
+    assert "CHECKLIST_CHANGED" in result.json["data"]["stale_reasons"]
+
+
+# --------------------------------------------------------------------------
+# 基线不一致时不许验收通过
+# --------------------------------------------------------------------------
+def test_accepted_is_terminal_for_recording(prepared: Path) -> None:
+    """ACCEPTED 是终态：不能再改验收结论；结论失效必须走 CR（BR-016）。"""
+    record_all_pass(prepared)
+    approve(prepared)
+
+    result = record(prepared, AC_1, "fail", evidence="验收后发现问题", expect=1)
+
+    assert "PRD_STATE_NOT_ALLOWED" in error_codes(result)
+    message = result.json["errors"][0]["suggestion"]
+    assert "prd cr" in message
+    assert items_by_ac(prepared)[AC_1]["conclusion"] == "pass"
+
+
+def test_approve_refuses_when_verification_baseline_is_stale(prepared: Path) -> None:
+    record_all_pass(prepared)
+    write(prepared / "src/app.py", "print('changed before acceptance')\n")
+
+    result = approve(prepared, expect=1)
+
+    assert "BASELINE_STALE" in error_codes(result)
+    assert "READY_FOR_ACCEPTANCE" in prd_metadata_text(prepared)

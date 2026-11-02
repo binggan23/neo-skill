@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 本地工具
+.pi/
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+
+# 本地临时快照（非项目产物）
+tmptest/
+# 本地复跑 CI 负向验证时产生的报告
+lint-report.json

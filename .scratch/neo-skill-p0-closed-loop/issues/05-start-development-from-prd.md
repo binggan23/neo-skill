@@ -4,12 +4,12 @@
 
 **Blocked by:** 03: 完成 PRD 草稿、评审与批准基线
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 开发入口必须显式绑定一个 PRD，并在结果中返回绑定对象和当前基线。
-- [ ] 门禁检查 PRD 存在、状态允许、批准记录、hash、项目约束确认、模块/编号引用和主需求关系。
-- [ ] 未绑定、不存在、未批准、hash 失效、状态不允许或项目约束未确认时返回结构化错误、非零退出码和下一步建议。
-- [ ] 门禁失败时不生成 Spec、Plan、Tasks，不改变 PRD 状态，不修改正式代码或测试。
-- [ ] 门禁通过后建立 Spec、Plan、Tasks 与 PRD 版本和 hash 的关联，并将 PRD 置为 `DEVELOPING`。
-- [ ] AI 或 CLI 发现需求不明确、Spec/Tasks 越界或代码变更疑似扩大范围时停止相关工作，要求 CR 或人工澄清。
-- [ ] CLI 黑盒测试覆盖未绑定、DRAFT、hash 失效、constitution 未确认、引用不匹配、合法启动和越界停止。
+- [x] 开发入口必须显式绑定一个 PRD，并在结果中返回绑定对象和当前基线。
+- [x] 门禁检查 PRD 存在、状态允许、批准记录、hash、项目约束确认、模块/编号引用和主需求关系。
+- [x] 未绑定、不存在、未批准、hash 失效、状态不允许或项目约束未确认时返回结构化错误、非零退出码和下一步建议。
+- [x] 门禁失败时不生成 Spec、Plan、Tasks，不改变 PRD 状态，不修改正式代码或测试。
+- [x] 门禁通过后建立 Spec、Plan、Tasks 与 PRD 版本和 hash 的关联，并将 PRD 置为 `DEVELOPING`。
+- [x] AI 或 CLI 发现需求不明确、Spec/Tasks 越界或代码变更疑似扩大范围时停止相关工作，要求 CR 或人工澄清。
+- [x] CLI 黑盒测试覆盖未绑定、DRAFT、hash 失效、constitution 未确认、引用不匹配、合法启动和越界停止。

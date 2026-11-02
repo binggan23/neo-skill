@@ -1,0 +1,123 @@
+# Neo Skill 声明式规则（发布源）
+#
+# 这是 flow-core 的单一事实来源：目录骨架、编号、状态机、门禁与裁剪规则都在这里声明。
+# `flow-core init` 会把它复制成项目基线 `.specify/rules/flow.yaml`；
+# 运行时优先读取项目基线，缺失才回退本文件。
+#
+# 规则是数据，不是代码：新增状态或跳转只改这里，不要改 flow_core/state.py。
+version: 1
+
+limits:
+  max_scenarios_per_prd: 8
+  max_repair_rounds: 3
+
+ids:
+  width: 3
+  prefixes:
+    req: REQ
+    prd: PRD
+    sc: SC
+    ac: AC
+    cr: CR
+    dec: DEC
+    adr: ADR
+
+roles:
+  - requirement_owner
+  - project_owner
+  - developer
+  - tester
+  - stakeholder
+
+req:
+  initial: NEW
+  states: [NEW, TRIAGED, PLANNED, IN_PRD, DONE, DEFERRED, REJECTED]
+  # 草稿期：内容与字段可改（req update / align / classify / set-priority）
+  draft_states: [NEW, TRIAGED]
+  # 内容已冻结：改正文/字段必须走 req unplan 或 PRD 变更（CR）
+  content_locked: [PLANNED, IN_PRD, DONE, DEFERRED, REJECTED]
+  # 已交给 PRD 的状态：不能再无记录地改期/取消排期（SRS-FR-035）
+  prd_states: [IN_PRD, DONE]
+  transitions:
+    NEW: [TRIAGED, DEFERRED, REJECTED]
+    TRIAGED: [PLANNED, DEFERRED, REJECTED]
+    PLANNED: [IN_PRD, TRIAGED, DEFERRED, REJECTED]
+    IN_PRD: [DONE]
+    DONE: []
+    DEFERRED: [TRIAGED, REJECTED]
+    REJECTED: []
+
+prd:
+  initial: DRAFT
+  states:
+    - DRAFT
+    - IN_REVIEW
+    - CHANGES_REQUESTED
+    - APPROVED
+    - DEVELOPING
+    - READY_FOR_ACCEPTANCE
+    - ACCEPTED
+    - REJECTED
+    - SUPERSEDED
+  transitions:
+    DRAFT: [IN_REVIEW, REJECTED]
+    IN_REVIEW: [APPROVED, CHANGES_REQUESTED, REJECTED]
+    CHANGES_REQUESTED: [IN_REVIEW, DRAFT]
+    APPROVED: [DEVELOPING, IN_REVIEW, SUPERSEDED]
+    DEVELOPING: [READY_FOR_ACCEPTANCE, IN_REVIEW]
+    READY_FOR_ACCEPTANCE: [ACCEPTED, DEVELOPING, IN_REVIEW]
+    ACCEPTED: []
+    REJECTED: []
+    SUPERSEDED: []
+  # 草稿期：正文与场景/功能/版本字段可改（prd update）
+  draft_states: [DRAFT, CHANGES_REQUESTED]
+  # 已建立基线：内容或锁定字段变化必须走 CR 并重新批准（SRS-FR-049/050）
+  cr_states: [APPROVED, DEVELOPING, READY_FOR_ACCEPTANCE, ACCEPTED, SUPERSEDED]
+
+# 人工决策命令 → 需要的团队职责。状态跳转本身由上面的状态机约束。
+gates:
+  req.confirm: {role: stakeholder, from: NEW, to: TRIAGED}
+  req.plan: {role: requirement_owner, from: TRIAGED, to: PLANNED}
+  req.unplan: {role: requirement_owner, from: PLANNED, to: TRIAGED}
+  req.defer: {role: requirement_owner, to: DEFERRED}
+  req.reject: {role: requirement_owner, to: REJECTED}
+  prd.submit-review: {role: stakeholder, from: DRAFT, to: IN_REVIEW}
+  prd.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
+  prd.request-changes: {role: requirement_owner, from: IN_REVIEW, to: CHANGES_REQUESTED}
+  prd.reject: {role: requirement_owner, to: REJECTED}
+  # ticket 04：PRD 变更（CR）。`cr.approve` 的 from/to 由状态机约束（IN_REVIEW → APPROVED）；
+  # `cr.reject` 的目标状态按内容是否被改决定（未改 → 恢复 CR 前状态；已改 → 保持 IN_REVIEW）。
+  prd.cr.create: {role: requirement_owner}
+  prd.cr.approve: {role: requirement_owner, from: IN_REVIEW, to: APPROVED}
+  prd.cr.reject: {role: requirement_owner}
+  dev.start: {role: developer, from: APPROVED, to: DEVELOPING}
+  acceptance.submit: {role: developer, from: DEVELOPING, to: READY_FOR_ACCEPTANCE}
+  acceptance.approve: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: ACCEPTED}
+  acceptance.reject: {role: requirement_owner, from: READY_FOR_ACCEPTANCE, to: DEVELOPING}
+
+directories:
+  prunable: [discovery, design, growth, releases, meetings, reports]
+  not_prunable: [03-requirements, 04-prds, 07-acceptance, .specify, .neo-skill]
+
+# 开发门禁（dev gate / dev start / dev scope-check）
+dev:
+  # 允许启动开发的 PRD 状态：APPROVED 首次启动、DEVELOPING 幂等重启（ticket 05）
+  start_states: [APPROVED, DEVELOPING]
+  # 开发阶段允许写入的路径前缀（相对项目根）；越界即 SCOPE_EXCEEDED（BR-012/BR-013）
+  allowed_paths: [src, tests, 06-specs]
+  # 门禁通过后生成的开发产物（06-specs/<module>/PRD-NNN-<slug>/ 下）
+  spec_files: [spec.md, plan.md, tasks.md]
+  # 主需求必须处于的状态才能作为 PRD 的开发依据（读 req.prd_states 为默认）
+  require_req_states: [IN_PRD, DONE]
+  # 允许执行验证命令的 PRD 状态（ticket 06）：只有开发中才能产出验证证据
+  verify_states: [DEVELOPING]
+  # 建议的验证套件（供 Skill 选择；--suite 不做白名单限制，项目可自定义）
+  verify_suites: [unit, integration, static, e2e]
+  # 防伪造检查对比的源码/测试根目录（代码版本摘要也用它）
+  code_roots: [src, tests]
+
+# 受管理区块的目标文件（flow-core index 独占生成）
+managed_blocks:
+  - 03-requirements/backlog.md
+  - 02-definition/feature-map.md
+  - 04-prds/index.md

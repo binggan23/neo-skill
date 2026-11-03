@@ -14,7 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0,<10.0"]
+dev = [
+    "pytest>=8.0,<10.0",
+    "ruff>=0.16,<0.17",
+    "mypy>=2.0,<3.0",
+]
 
 [tool.setuptools]
 packages = ["flow_core", "flow_core.commands"]
@@ -30,3 +34,38 @@ markers = [
     "slow: 重量级夹具/基准用例（默认也运行；CI 可分片或加 -m 'not slow'）",
 ]
 # 测试按文件分批跑（共享设计 §10）：不要用一条命令跑全套大 fixture。
+
+# ---------------------------------------------------------------------------
+# 静态检查（scripts/check.sh 与 CI 共用；retro 2026-11-02 引入）
+#
+# 只开「能抓真错误」的规则：未用导入/变量、盲 except、subprocess 未声明 check、
+# 类型可判定错误。刻意不开全部风格规则（ISC/COM/PLW 之类的排版偏好）——
+# 那些噪音会让人关掉检查，反而失去价值。
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "F",      # pyflakes：未用导入/变量、未定义名、f-string 无占位符
+    "E9",     # 语法/运行时致命问题
+    "B",      # bugbear：可变默认值、循环变量未用、zip 无 strict
+]
+ignore = [
+    "B008",   # argparse 里 func=... 的默认参数是惯用法
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里允许较松：夹具与断言辅助常需要未用参数
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+# flow_core 是唯一被测对象；tests 不进类型检查（黑盒测试没有类型契约）
+files = ["skills/neo-skill/runtime/flow_core"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true

@@ -324,7 +324,7 @@ def render_demo(workspace: Workspace, record: metadata.PrdRecord,
         "",
     ]
     grouped: dict[str, list[dict[str, Any]]] = {}
-    for ac, item in entries.items():
+    for _ac, item in entries.items():
         scenario = str(item.get("scenario") or "未归属场景")
         grouped.setdefault(scenario, []).append(item)
     if not grouped:

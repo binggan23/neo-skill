@@ -129,7 +129,7 @@ def _add_verification_commands(subparsers, parents) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "dev_command", None)
+    sub = str(getattr(args, "dev_command", "") or "")
     handler = _HANDLERS.get(sub)
     if handler is None:
         raise FlowError(
@@ -178,7 +178,7 @@ def _start(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resu
         return result
 
     record = report.record
-    gate = _gate_rule(rules, "dev.start")
+    gate = rules.gate("dev.start")
     team = state.require_team(workspace, object=record.id)
     state.require_member(team, actor, role=str(gate["role"]), object=record.id)
 
@@ -362,17 +362,6 @@ def _confirm(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "confirm", False))
 
 
-def _gate_rule(rules: Rules, command: str) -> dict[str, Any]:
-    gates = rules.data.get("gates") or {}
-    gate = gates.get(command)
-    if not isinstance(gate, dict) or "role" not in gate:
-        raise FlowError(
-            "RULES_INVALID",
-            f"规则缺少门禁定义 `{command}`",
-            object=command,
-            suggestion="在 .specify/rules/flow.yaml 的 gates 中声明 role（以及需要时的 from/to）",
-        )
-    return gate
 
 
 def _emit_failures(result: Result, report: development.GateReport) -> None:
@@ -498,6 +487,7 @@ def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) ->
             roots=verification.code_roots(rules))
         data["repair_limit"] = verification.repair_limit(workspace, rules)
     else:
+        assert project_command is not None  # 上文已保证：无 --command 且非 not-applicable 已抛错
         exit_code, stdout, stderr, duration_ms, timed_out = verification.execute(
             workspace, project_command, int(getattr(args, "timeout", verification.DEFAULT_TIMEOUT)))
         outcome = verification.RESULT_PASS if exit_code == 0 and not timed_out \
@@ -511,7 +501,7 @@ def _verify_run(workspace: Workspace, rules: Rules, args: argparse.Namespace) ->
             roots=verification.code_roots(rules))
         data["repair_limit"] = verification.repair_limit(workspace, rules)
 
-    paths = _persist(workspace, rules, record, data, result)
+    _persist(workspace, rules, record, data, result)
     result.data["prd"] = record.to_dict()
     result.data["run"] = entry
     result.data["result"] = entry["result"]
@@ -646,7 +636,8 @@ def _verify_guard(workspace: Workspace, rules: Rules, args: argparse.Namespace) 
         verification.apply_waiver(workspace, record, data, findings, reason)
 
     remaining = verification.unwaived(findings)
-    guard = data.get("guard") if isinstance(data.get("guard"), dict) else {}
+    raw_guard = data.get("guard")
+    guard: dict[str, Any] = dict(raw_guard) if isinstance(raw_guard, dict) else {}
     guard.update({
         "checked_at": fsutil.now_iso(),
         "ok": not remaining,
@@ -733,7 +724,8 @@ def _submit_acceptance(workspace: Workspace, rules: Rules, args: argparse.Namesp
             suggestion="恢复被删除/弱化的用例与断言，或使用 --allow-skip --reason 显式登记豁免",
         )
         return result
-    guard = data.get("guard") if isinstance(data.get("guard"), dict) else {}
+    raw_guard = data.get("guard")
+    guard: dict[str, Any] = dict(raw_guard) if isinstance(raw_guard, dict) else {}
     guard.update({
         "checked_at": fsutil.now_iso(),
         "ok": True,
@@ -741,7 +733,7 @@ def _submit_acceptance(workspace: Workspace, rules: Rules, args: argparse.Namesp
     })
     data["guard"] = guard
 
-    gate = _gate_rule(rules, ACCEPTANCE_SUBMIT_GATE)
+    gate = rules.gate(ACCEPTANCE_SUBMIT_GATE)
     team = state.require_team(workspace, object=record.id)
     # 提交验收是机械状态（BR-013 只限制「判定验收通过」），但仍要登记职责供审计
     if actor:

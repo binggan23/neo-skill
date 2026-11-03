@@ -15,24 +15,13 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 探索（文件地图、实现落点、调用链与影响面、外部一手资料）**派 subagent 去读**（`Explore` 类型，见
 `.pi/subagents-lite.json`），主线程接着干活；产物写成 Markdown 笔记放在**仓库外**，后续 agent 用指针复用。
 
-**代码定位走 CodeGraph**：`codegraph_explore`（宽问题）→ `codegraph_search`（按名找）→ `codegraph_node` /
-`codegraph_callers` / `codegraph_callees`（定义、谁调它、它调谁）→ `codegraph_impact`（改动半径）→
-`codegraph_files` / `codegraph_status`（目录、索引状态）。`codegraph_status` 的「Changes since index」非 0
-就先重建再信结论。`rg` / `read` 兜底：字面量常量、生成代码、迁移/配置、`*.md`、索引漏掉的符号。
+**代码定位走 CodeGraph**：`codegraph_explore`（宽问题）→ `codegraph_search`（按名找）→
+`codegraph_node` / `codegraph_callers` / `codegraph_callees` → `codegraph_impact`（改动半径）。
+`rg` / `read` 兜底：字面量常量、生成代码、迁移/配置、`*.md`、索引漏掉的符号。
 
-**探索的第一动作是 `codegraph_status`，不是 `find` / `grep`。** 这一步不可省略：
-「本仓库还没有索引」这个判断只有它能给出，不查就自称没有索引等于跳过整条约定。四种结果四种处理：
-
-| `codegraph_status` 结果 | 处理 |
-| --- | --- |
-| 有索引，`Changes since index` 为 0 | 正常走上面的 CodeGraph 路径 |
-| 有索引，但变更数非 0 | 先 `codegraph index` / `codegraph sync`，再信结论 |
-| 明确报「未初始化 / not indexed」 | 跑 `codegraph init`（一次性；之后 daemon 自动 sync），再走 CodeGraph。**本仓库已决定启用**，不必每次再问 |
-| 工具本身不可用（报错 / MCP 未连） | 才降级 `rg` / `read`，**并在结论里贴出 status 的原始输出说明原因** |
-
-兜底不是默认路径：宣告走 `rg` / `read` 兜底时必须能贴出 `codegraph_status` 的原始输出，否则视为漏做前置动作。
-新克隆、新 worktree、新机器开局都没有 `.codegraph/`（数据库是本机产物，见 `.codegraph/.gitignore`），
-所以每个新环境都要重跑一次 `codegraph init`（实测毫秒级）——这是常态，不是例外。
+**探索第一动作是 `codegraph_status`**，不是 `find` / `grep`。索引缺失、有变更、工具不可用
+三种分支的处理见 `docs/agents/codegraph.md`。**每个新 worktree 必须先 `codegraph init`**
+（worktree 不共享主仓库索引，这是本仓库的结构性陷阱，详见同一文件）。
 
 对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**；
 给子 agent 的 brief 里必须显式带上「先 `codegraph_status`，再探索」，否则子 agent 继承不到。
@@ -42,6 +31,28 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 
 聚合后只要有一条可执行 finding，就前台 `Agent` + `agent: "fix"`（`.agents/agents/fix.md`，brief 需求与报告格式见其
 prompt），全部 finding 一次修完，修完按同一固定点再跑一轮 `code-review` 复核，最多两轮；`Escalated` 与第二轮复现项交人。
+
+### 提交前先跑 `./scripts/check.sh --fast`
+
+一条命令跑完全部静态检查（`compileall` + `ruff` + `mypy`），秒级返回。
+`./scripts/check.sh` 不加参数会再按文件分批跑测试。CI 用的是同一套命令，
+所以本地绿等于 CI 绿，不必猜。
+
+`ruff` 与本仓库只开「能抓真错误」的规则（未用导入/变量、盲 except、bugbear）。
+刻意不开排版类规则：噪音会让人整个关掉检查，反而失去价值。
+
+### 派子 agent：给窄 scope + 强制产出节奏
+
+长时间无工具调用的 agent 会被 watchdog 杀掉。已知最常触发的场景是
+**一次读太多大文件**（例如让一个 reviewer 一次评 90 文件 / 26k 行）。
+
+给子 agent 的 brief 里固定写三条：
+
+1. **窄 scope**：点名它只负责哪些文件/哪些模块，其余不要看。
+2. **节奏**：每 10–15 分钟至少一次工具调用；每完成一个可测小块就提交。
+3. **别通读**：先读主线程准备好的摘要笔记，再按需查细节。
+
+材料多到一次读不完时，切给多个 agent，不要指望一个 agent 扛。
 
 ### 测试与内存
 

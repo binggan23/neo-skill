@@ -134,7 +134,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "req_command", None)
+    sub = str(getattr(args, "req_command", "") or "")
     handler = _HANDLERS.get(sub)
     if handler is None:
         raise FlowError(
@@ -780,8 +780,7 @@ def _schedule_question(workspace: Workspace, rules: Rules, record: reqs.ReqRecor
                        *, assume_status: str | None = None) -> tuple[str | None, list[str]]:
     """「是否设置 xxx 需求排期」：只有等待排期询问的状态才给文案与确切命令。"""
     status = assume_status or record.status
-    gates = rules.data.get("gates") or {}
-    gate = gates.get("req.plan") if isinstance(gates.get("req.plan"), dict) else {}
+    gate = rules.gate("req.plan")
     from_state = str(gate.get("from") or "TRIAGED")
     if status != from_state:
         return None, []

@@ -76,7 +76,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "prd_cr_command", None)
+    sub = str(getattr(args, "prd_cr_command", "") or "")
     handler = _HANDLERS.get(sub)
     if handler is None:
         raise FlowError(
@@ -136,7 +136,7 @@ def _create(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
 
         try:
             if invalidating:
-                if triggers:
+                if triggers and to_state is not None:
                     state.apply_transition(record.meta, machine=PRD_MACHINE, to_state=to_state,
                                            actor=actor, action=command, rules=rules)
                     _annotate_history(record.meta, f"{cr_id}: {title}")

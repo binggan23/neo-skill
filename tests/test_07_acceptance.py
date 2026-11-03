@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from conftest import read, run_cli, write
-from helpers_03 import ENV, req_meta
+from conftest import read, write
+from helpers_03 import req_meta
 from helpers_07 import (
     AC_1,
     AC_2,
@@ -416,7 +416,7 @@ def _table_rows(body: str) -> list[dict]:
             continue
         if set("".join(cells)) <= {"-", " ", ":"}:
             continue
-        rows.append(dict(zip(header, cells)))
+        rows.append(dict(zip(header, cells, strict=False)))
     return rows
 
 

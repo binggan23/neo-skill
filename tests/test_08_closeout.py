@@ -11,8 +11,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-import yaml
 
 from conftest import read, run_cli, write
 from helpers_03 import ENV, prd_meta, req_meta

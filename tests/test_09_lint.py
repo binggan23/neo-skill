@@ -16,7 +16,7 @@ import yaml
 import helpers_07 as h7
 import helpers_08 as h8
 from conftest import read, run_cli, write
-from helpers_03 import ENV, TEAM, create_prd, planned_req, prd_dir, update_body
+from helpers_03 import ENV, TEAM, planned_req, prd_dir
 
 PRD_ID = "PRD-001"
 REQ_ID = "REQ-001"

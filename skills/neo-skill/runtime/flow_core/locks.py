@@ -12,6 +12,7 @@ import json
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 from pathlib import Path
 from typing import Iterator
 
@@ -28,7 +29,7 @@ class LockInfo:
     command: str
     rules_version: int
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "object": self.object,
             "pid": self.pid,

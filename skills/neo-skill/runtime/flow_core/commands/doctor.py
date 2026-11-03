@@ -77,11 +77,11 @@ def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
                 suggestion=check.get("suggestion"),
             )
     else:
-        if warning:
-            result.next_actions.extend(
-                check["suggestion"] for check in warning if check.get("suggestion")
-            )
-        if not workspace.initialized:
+        for check in warning:
+            suggestion = check.get("suggestion")
+            if suggestion and suggestion not in result.next_actions:
+                result.next_actions.append(suggestion)
+        if not workspace.initialized and "flow-core init" not in result.next_actions:
             result.next_actions.append("flow-core init")
     return result
 

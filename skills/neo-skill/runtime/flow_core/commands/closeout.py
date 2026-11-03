@@ -53,7 +53,7 @@ def add_arguments(subparsers: Any, parents: list[Any]) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "acceptance_command", None)
+    sub = str(getattr(args, "acceptance_command", "") or "")
     handler = _HANDLERS.get(sub)
     if handler is None:  # pragma: no cover - 注册表保证不会走到
         raise FlowError("USAGE", f"未知的收尾子命令 {sub}")
@@ -156,7 +156,7 @@ def _incomplete(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
                 tx: transactions.Transaction, actor: str, *, error: FlowError) -> Result:
     """收尾未完成：保留人工验收结论，记录错误与待办，返回可恢复的失败信封。"""
     pending = transactions.pending_ops(workspace, tx)
-    entry = {
+    entry: dict[str, Any] = {
         "state": tx.state if tx.state in (transactions.STATE_PREPARED,
                                           transactions.STATE_FAILED) else transactions.STATE_FAILED,
         "tx": tx.id,
@@ -165,7 +165,7 @@ def _incomplete(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
         "error": error.message,
         "code": error.code,
         "pending": pending,
-        "main_req": (record.source_reqs or [None])[0],
+        "main_req": str(record.source_reqs[0]) if record.source_reqs else "",
     }
     record.meta["closeout"] = entry
     metadata.save(workspace, record)
@@ -214,7 +214,8 @@ def _success(workspace: Workspace, rules: Rules, record: metadata.PrdRecord,
     data["tx"] = entry.get("tx")
     data["closeout_state"] = entry.get("state")
     data["pending"] = []
-    data["main_req"] = entry.get("main_req") or (record.source_reqs or [None])[0]
+    data["main_req"] = entry.get("main_req") or (
+        str(record.source_reqs[0]) if record.source_reqs else "")
     data["main_req_status"] = _main_req_status(workspace, rules, data["main_req"])
     data["scenarios"] = closeout.on_disk_scenarios(workspace, record)
     data["index_ok"] = index.evaluate(workspace, rules)["ok"]
@@ -237,7 +238,7 @@ def _write_closeout(workspace: Workspace, record: metadata.PrdRecord, actor: str
         "tx": tx.id if tx is not None else previous.get("tx"),
         "at": fsutil.now_iso(),
         "by": actor,
-        "main_req": (record.source_reqs or [None])[0],
+        "main_req": str(record.source_reqs[0]) if record.source_reqs else "",
         "ops": [op.path for op in tx.ops] if tx is not None else [],
     }
     record.meta["closeout"] = entry

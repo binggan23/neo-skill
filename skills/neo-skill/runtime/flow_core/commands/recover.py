@@ -17,7 +17,7 @@ import argparse
 import sys
 from typing import Any
 
-from .. import closeout, locks, metadata, state, transactions
+from .. import locks, metadata, state, transactions
 from ..output import EXIT_USAGE, FlowError, Result
 from ..rules import Rules
 from ..workspace import Workspace
@@ -79,6 +79,9 @@ def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
               file=sys.stderr)
         raise SystemExit(EXIT_USAGE)
     handler = _HANDLERS.get(sub)
+    if handler is None:
+        print("ERROR: 未知的 recover 子命令 " + sub, file=sys.stderr)
+        raise SystemExit(EXIT_USAGE)
     try:
         return handler(workspace, rules, args)
     except FlowError as exc:
@@ -176,7 +179,8 @@ def _run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result
                 suggestion=exc.suggestion,
             )
             continue
-        entry = {"id": tx.id, "object": tx.object, "state": tx.state, "pending": []}
+        entry: dict[str, Any] = {"id": tx.id, "object": tx.object,
+                                 "state": tx.state, "pending": []}
         closeout_entry = _refresh_closeout(workspace, rules, tx, actor)
         if closeout_entry is not None:
             entry["closeout"] = closeout_entry

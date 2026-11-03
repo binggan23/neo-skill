@@ -40,6 +40,9 @@ def test_doctor_warns_uninitialized_project_and_suggests_init(project: Path) -> 
     assert result.code == 0
     assert result.check("project")["status"] == "warn"
     assert "flow-core init" in result.json["next_actions"]
+    # 未初始化时 rules 与 project 两项都会建议 init —— 同一条建议只能出现一次，
+    # 否则用户看到重复的下一步，误以为有两件事要做。
+    assert result.json["next_actions"].count("flow-core init") == 1
 
 
 def test_doctor_fails_with_nonzero_exit_when_root_missing(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ name: flow-core
 #
 # 目标不是「让提交变绿」，而是**让违规结果无法通过**：
 #   - 语法检查（compileall）失败 → 作业失败；
+#   - 静态检查（ruff）或类型检查（mypy）失败 → 作业失败；
 #   - 每一批黑盒测试失败 → 作业失败（按文件循环，单文件失败立即中断）；
 #   - 在临时初始化项目上跑 `doctor --strict` 与 `lint --json`，**非零退出码即失败**。
 #
@@ -43,10 +44,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: 安装依赖（仅 PyYAML 与 pytest）
+      - name: 安装依赖（PyYAML、pytest、ruff、mypy）
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyyaml pytest
+          python -m pip install pyyaml pytest ruff mypy
 
       - name: 环境自检（Python / Node 版本要求）
         run: |
@@ -55,6 +56,16 @@ jobs:
 
       - name: 语法检查（compileall）
         run: python -m compileall -q skills/neo-skill/runtime
+
+      - name: 静态检查（ruff：未用导入/变量、盲 except、bugbear）
+        # 能抓「语法合法但一定是 bug」的一类问题：未用导入、未用变量、
+        # f-string 无占位符、subprocess 未声明 check、zip 无 strict。
+        run: ruff check skills/neo-skill/runtime tests
+
+      - name: 类型检查（mypy）
+        # 能抓 Optional 未收窄、dict|None 上 .get()、参数类型不匹配——
+        # compileall 对这些问题全绿，只有运行到那条路径才会炸。
+        run: python -m mypy
 
       - name: 黑盒测试（按文件循环）
         # 不跑 `pytest tests/` 全量：规模夹具与单文件隔离都按批次来（共享设计 §10）。

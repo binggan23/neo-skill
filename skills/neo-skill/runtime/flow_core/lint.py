@@ -328,45 +328,45 @@ def _check_project(ctx: LintContext) -> list[dict[str, Any]]:
 def _check_identity(ctx: LintContext) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
 
-    for record in ctx.reqs:
-        match = _REQ_FILE_RE.match(record.path.name)
+    for req in ctx.reqs:
+        match = _REQ_FILE_RE.match(req.path.name)
         file_id = match.group(1) if match else ""
-        if file_id and record.id and file_id != record.id:
+        if file_id and req.id and file_id != req.id:
             issues.append(finding(
-                "ID_MISMATCH", object=record.id, path=record.rel,
-                message=f"文件名编号 {file_id} 与 front matter 的 id {record.id} 不一致",
+                "ID_MISMATCH", object=req.id, path=req.rel,
+                message=f"文件名编号 {file_id} 与 front matter 的 id {req.id} 不一致",
             ))
-        if record.status and not ctx.rules.is_state("req", record.status):
+        if req.status and not ctx.rules.is_state("req", req.status):
             issues.append(finding(
-                "INVALID_STATE", object=record.id, path=record.rel,
-                message=f"需求状态 {record.status} 不在规则声明的 req 状态里",
+                "INVALID_STATE", object=req.id, path=req.rel,
+                message=f"需求状态 {req.status} 不在规则声明的 req 状态里",
             ))
 
-    for record in ctx.prds:
-        match = _PRD_DIR_RE.match(record.directory.name)
+    for prd in ctx.prds:
+        match = _PRD_DIR_RE.match(prd.directory.name)
         dir_id = match.group(1) if match else ""
-        if dir_id and record.id and dir_id != record.id:
+        if dir_id and prd.id and dir_id != prd.id:
             issues.append(finding(
-                "ID_MISMATCH", object=record.id, path=record.rel,
-                message=f"目录编号 {dir_id} 与 metadata 的 id {record.id} 不一致",
+                "ID_MISMATCH", object=prd.id, path=prd.rel,
+                message=f"目录编号 {dir_id} 与 metadata 的 id {prd.id} 不一致",
             ))
-        if record.status and not ctx.rules.is_state("prd", record.status):
+        if prd.status and not ctx.rules.is_state("prd", prd.status):
             issues.append(finding(
-                "INVALID_STATE", object=record.id, path=record.rel,
-                message=f"PRD 状态 {record.status} 不在规则声明的 prd 状态里",
+                "INVALID_STATE", object=prd.id, path=prd.rel,
+                message=f"PRD 状态 {prd.status} 不在规则声明的 prd 状态里",
             ))
-        parent_module = record.directory.parent.name
-        if record.module and parent_module != record.module:
+        parent_module = prd.directory.parent.name
+        if prd.module and parent_module != prd.module:
             issues.append(finding(
-                "MODULE_MISMATCH", object=record.id, path=record.rel,
-                message=f"{record.rel} 位于模块 {parent_module}，但 metadata.module 是 {record.module}",
+                "MODULE_MISMATCH", object=prd.id, path=prd.rel,
+                message=f"{prd.rel} 位于模块 {parent_module}，但 metadata.module 是 {prd.module}",
             ))
 
     seen: dict[str, list[str]] = {}
-    for record in ctx.reqs:
-        seen.setdefault(record.id, []).append(record.rel)
-    for record in ctx.prds:
-        seen.setdefault(record.id, []).append(record.rel)
+    for req in ctx.reqs:
+        seen.setdefault(req.id, []).append(req.rel)
+    for prd in ctx.prds:
+        seen.setdefault(prd.id, []).append(prd.rel)
     for object_id, paths in seen.items():
         if object_id and len(paths) > 1:
             issues.append(finding(
@@ -405,25 +405,25 @@ def _check_counters(ctx: LintContext) -> list[dict[str, Any]]:
 def _check_references(ctx: LintContext) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
 
-    for record in ctx.prds:
-        for req_id in record.source_reqs:
+    for prd in ctx.prds:
+        for req_id in prd.source_reqs:
             if ctx.req(req_id) is None:
                 issues.append(finding(
-                    "BROKEN_REFERENCE", object=record.id, path=record.rel,
+                    "BROKEN_REFERENCE", object=prd.id, path=prd.rel,
                     message=f"主需求 {req_id} 不存在",
                 ))
-        for req_id in record.related_reqs:
+        for req_id in prd.related_reqs:
             if ctx.req(req_id) is None:
                 issues.append(finding(
-                    "BROKEN_REFERENCE", object=record.id, path=record.rel,
+                    "BROKEN_REFERENCE", object=prd.id, path=prd.rel,
                     message=f"相关需求 {req_id} 不存在",
                 ))
 
-    for record in ctx.reqs:
-        linked = str(record.meta.get("prd") or "").strip()
+    for req in ctx.reqs:
+        linked = str(req.meta.get("prd") or "").strip()
         if linked and ctx.prd(linked) is None:
             issues.append(finding(
-                "BROKEN_REFERENCE", object=record.id, path=record.rel,
+                "BROKEN_REFERENCE", object=req.id, path=req.rel,
                 message=f"关联 PRD {linked} 不存在",
             ))
 
@@ -463,7 +463,7 @@ def _check_state_relations(ctx: LintContext) -> list[dict[str, Any]]:
             if target is None:
                 issues.append(finding(
                     "INVALID_STATE", object=record.id, path=record.rel,
-                    message=f"需求已 DONE，但没有关联任何 PRD（无法证明已交付）",
+                    message="需求已 DONE，但没有关联任何 PRD（无法证明已交付）",
                 ))
             elif target.status != "ACCEPTED":
                 issues.append(finding(
@@ -631,8 +631,11 @@ def _check_rules(ctx: LintContext) -> list[dict[str, Any]]:
                 message=f"项目规则缺少 `{key}` 字段（随包规则有）",
             ))
 
-    project_gates = project_data.get("gates") if isinstance(project_data.get("gates"), dict) else {}
-    for command in sorted((packaged.data.get("gates") or {}).keys()):
+    raw_project_gates = project_data.get("gates")
+    project_gates = raw_project_gates if isinstance(raw_project_gates, dict) else {}
+    raw_packaged_gates = packaged.data.get("gates")
+    packaged_gates = raw_packaged_gates if isinstance(raw_packaged_gates, dict) else {}
+    for command in sorted(packaged_gates.keys()):
         if command not in project_gates:
             issues.append(finding(
                 "RULES_MISMATCH", object=command, path=".specify/rules/flow.yaml",

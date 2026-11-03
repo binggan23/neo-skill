@@ -85,6 +85,24 @@ class Rules:
     def limit(self, name: str, default: int) -> int:
         return int(self.data.get("limits", {}).get(name, default))
 
+    # ---- 人工决策门禁 ----
+    def gate(self, command: str) -> dict[str, Any]:
+        """取一条人工决策门禁定义（`gates.<command>`）。
+
+        缺失或形状不合法直接报 `RULES_INVALID`，避免把「规则没声明」
+        误当成「无需校验」而静默放行人工决策。
+        """
+        gates = self.data.get("gates")
+        gate = gates.get(command) if isinstance(gates, dict) else None
+        if not isinstance(gate, dict) or "role" not in gate:
+            raise FlowError(
+                "RULES_INVALID",
+                f"规则缺少门禁定义 `{command}`",
+                object=command,
+                suggestion="在 .specify/rules/flow.yaml 的 gates 中声明 role（以及需要时的 from/to）",
+            )
+        return gate
+
     # ---- 裁剪 ----
     @property
     def prunable_groups(self) -> list[str]:

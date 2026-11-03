@@ -407,9 +407,7 @@ def prd_readiness(rules: Rules, record: ReqRecord) -> dict[str, Any]:
     与 `require_planned` 同一套判断，区别是本函数返回原因列表而不抛错，
     便于 Skill 在 grilling 阶段就告诉用户「还差什么」。
     """
-    gates = rules.data.get("gates") or {}
-    gate = gates.get("req.plan") if isinstance(gates.get("req.plan"), dict) else {}
-    planned_state = str(gate.get("to") or "PLANNED")
+    planned_state = str(rules.gate("req.plan").get("to") or "PLANNED")
     reasons: list[str] = []
     if record.status != planned_state:
         reasons.append(f"当前状态是 {record.status}，需要 {planned_state}（先 req confirm 再 req plan）")
@@ -436,9 +434,7 @@ def require_planned(workspace: Workspace, rules: Rules, req_id: str) -> ReqRecor
     ticket 03 只需 `from ..requirements import require_planned`，不要重复实现这层判断。
     """
     record = load(workspace, req_id, rules=rules)
-    gates = rules.data.get("gates") or {}
-    gate = gates.get("req.plan") if isinstance(gates.get("req.plan"), dict) else {}
-    planned_state = str(gate.get("to") or "PLANNED")
+    planned_state = str(rules.gate("req.plan").get("to") or "PLANNED")
     if record.status != planned_state:
         raise FlowError(
             "REQ_NOT_PLANNED",
@@ -524,7 +520,7 @@ def candidates(workspace: Workspace, *, title: str, module: str | None = None) -
         feature_tokens = _tokens(f"{stem} {heading} {feature_module}")
         overlap = query & feature_tokens
         score = similarity(query, feature_tokens)
-        reasons: list[str] = []
+        reasons = []
         if overlap:
             reasons.append("功能现状名称重叠：" + "、".join(sorted(overlap)))
         if module and feature_module == module:

@@ -108,7 +108,7 @@ def parse_impact(raw: Iterable[str] | str | None) -> dict[str, Any]:
         raise FlowError(
             "IMPACT_REQUIRED",
             "缺少必填的 CR 影响面：" + "、".join(missing),
-            object=missing,
+            object=",".join(missing),
             suggestion="用 --impact 显式给出 spec/tasks/tests/design 四项 true/false；version 可选",
         )
     return impact
@@ -382,7 +382,7 @@ def approvals(workspace: Workspace, record: PrdRecord) -> list[dict[str, Any]]:
             "approved_at": entry.get("at"),
             "current": version == record.version,
         }
-        successor = superseders.get(version)
+        successor = superseders.get(version) if version is not None else None
         if successor is not None and (version is None or version < record.version):
             data["superseded_by_cr"] = successor.id
             data["superseded_by_version"] = successor.version_after

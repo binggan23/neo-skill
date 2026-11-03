@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 import yaml
 
 from conftest import read, run_cli, write
@@ -327,6 +328,60 @@ def test_validate_rejects_untestable_ac(inited_project: Path) -> None:
 
     assert result.code == 1, result
     assert "TESTABILITY_WEAK" in issue_codes(result, "error")
+
+
+# --------------------------------------------------------------------------
+# Given/When/Then 的形态（SRS-FR-043、SRS-NFR-003）
+#
+# 中文是 SRS-NFR-003 的 MUST（「正文使用 UTF-8 并支持中文」），但词表支持中文
+# 不等于实现正确：曾有一次改动把「标签后必须跟空格」写进正则，导致
+# `假设用户已登录，当点击导出，则下载CSV`（中文无空格）被判为缺 AC，
+# 而全套 517 个测试依然全绿。这组参数化用例就是那条回归的闸门。
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("label", "ac_line", "expected_ok"),
+    [
+        # ---- 通过：中英文各形态 ----
+        ("英文标准", "- AC-RES-01-02 Given 已上传 When 点击 Then 完成", True),
+        ("中文无空格", "- AC-RES-01-02 假设用户已登录，当点击导出，则下载CSV", True),
+        ("中文有空格", "- AC-RES-01-02 假设 用户已登录，当 点击导出，则 下载CSV", True),
+        ("给定系标签", "- AC-RES-01-02 给定已登录，当点击，则下载", True),
+        ("假定系标签", "- AC-RES-01-02 假定已登录，当点击，则下载", True),
+        ("前置条件标签", "- AC-RES-01-02 前置条件已登录，当点击，则下载", True),
+        ("中英混用", "- AC-RES-01-02 Given 已登录，当点击，Then 下载", True),
+        # ---- 拒绝：空壳与纯标点 ----
+        ("空壳英文", "- AC-RES-01-02 Given When Then", False),
+        ("空壳中文", "- AC-RES-01-02 假设 当 则", False),
+        ("纯标点", "- AC-RES-01-02 Given, When, Then.", False),
+        ("缺 Then", "- AC-RES-01-02 假设已登录，当点击", False),
+        ("完全无 GWT", "- AC-RES-01-02 解析过程体验流畅。", False),
+        # ---- 「适当」不该被当成标签「当」 ----
+        ("适当不误命中", "- AC-RES-01-02 Given 用户适当权限，When 点击，Then 成功", True),
+    ],
+)
+def test_ac_given_when_then_shapes(
+    inited_project: Path, label: str, ac_line: str, expected_ok: bool
+) -> None:
+    """每种 GWT 形态都必须被判对——尤其中文标签后不带空格的形状。"""
+    planned_req(inited_project, title="简历批量解析", slug="batch-parse")
+    create_prd(inited_project, scenarios="SC-RES-01,SC-RES-02")
+
+    body = VALID_PRD.replace(
+        """- AC-RES-01-02
+  - Given 已上传 100 份简历
+  - When 上传队列开始解析
+  - Then 5 分钟内 100 条解析结果全部可见""",
+        ac_line,
+    )
+    update_body(inited_project, body)
+
+    result = run_cli(inited_project, "prd", "validate", "--id", "PRD-001")
+
+    if expected_ok:
+        assert "TESTABILITY_WEAK" not in issue_codes(result, "error"), (label, result)
+    else:
+        assert result.code == 1, (label, result)
+        assert "TESTABILITY_WEAK" in issue_codes(result, "error"), (label, result)
 
 
 def test_validate_warns_about_term_inconsistency_with_glossary(inited_project: Path) -> None:

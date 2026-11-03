@@ -103,7 +103,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "acceptance_command", None)
+    sub = str(getattr(args, "acceptance_command", "") or "")
     if sub in CLOSEOUT_COMMANDS:  # ticket 08：收尾子命令自己路由
         from . import closeout as closeout_command
 
@@ -143,7 +143,7 @@ def _prepare(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Re
     submitted_at = (vstatus.submission or {}).get("at")
     data = acceptance.load_checklist(workspace, record) or acceptance.blank_checklist(record)
     prepared_at = data.get("prepared_at") or fsutil.now_iso()
-    current = {
+    current: dict[str, Any] = {
         "prd_hash": record.compute_content_hash(),
         "code_version": vstatus.code_version,
         "verification_digest": vstatus.verification_digest,
@@ -341,7 +341,7 @@ def _approve(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Re
     acceptance.require_state(record, acceptance.RECORD_STATES, command=command)
     data = acceptance.require_prepared(workspace, record)
 
-    gate = _gate_rule(rules, APPROVE_GATE)
+    gate = rules.gate(APPROVE_GATE)
     team = state.require_team(workspace, object=record.id)
     state.require_member(team, actor, role=str(gate.get("role") or DECISION_ROLE),
                          object=record.id)
@@ -492,7 +492,7 @@ def _reject(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     acceptance.require_state(record, acceptance.RECORD_STATES, command=command)
     data = acceptance.require_prepared(workspace, record)
 
-    gate = _gate_rule(rules, REJECT_GATE)
+    gate = rules.gate(REJECT_GATE)
     team = state.require_team(workspace, object=record.id)
     state.require_member(team, actor, role=str(gate.get("role") or DECISION_ROLE),
                          object=record.id)
@@ -556,7 +556,7 @@ def _conditional(workspace: Workspace, rules: Rules, args: argparse.Namespace) -
     acceptance.require_state(record, acceptance.RECORD_STATES, command=command)
     data = acceptance.require_prepared(workspace, record)
 
-    gate = _gate_rule(rules, APPROVE_GATE)
+    gate = rules.gate(APPROVE_GATE)
     team = state.require_team(workspace, object=record.id)
     state.require_member(team, actor, role=str(gate.get("role") or DECISION_ROLE),
                          object=record.id)
@@ -833,21 +833,10 @@ def _clean_list(value: Any) -> list[str]:
     return cleaned
 
 
-def _gate_rule(rules: Rules, command: str) -> dict[str, Any]:
-    gates = rules.data.get("gates") or {}
-    gate = gates.get(command)
-    if not isinstance(gate, dict) or "role" not in gate:
-        raise FlowError(
-            "RULES_INVALID",
-            f"规则缺少门禁定义 `{command}`",
-            object=command,
-            suggestion="在 .specify/rules/flow.yaml 的 gates 中声明 role（以及需要时的 from/to）",
-        )
-    return gate
 
 
 def _suggest_actor(workspace: Workspace, rules: Rules) -> str:
-    role = str(_gate_rule(rules, APPROVE_GATE).get("role") or DECISION_ROLE)
+    role = str(rules.gate(APPROVE_GATE).get("role") or DECISION_ROLE)
     team = state.load_team(workspace)
     if team is not None:
         for member in team.members:

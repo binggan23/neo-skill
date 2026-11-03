@@ -115,7 +115,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
-    sub = getattr(args, "prd_command", None)
+    sub = str(getattr(args, "prd_command", "") or "")
     if sub == "cr":  # ticket 04：CR 子组自己路由
         from . import prd_change as change_command
 

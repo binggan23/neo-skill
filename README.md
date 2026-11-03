@@ -83,24 +83,27 @@ scripts/pilot.sh                       隔离端到端试点
 ## 开发
 
 ```bash
-python3 -m pytest tests/test_01_init.py      # 按文件分批跑，不要一次跑全套
-python3 -m pytest tests/test_02_requirements.py
-python3 -m pytest tests/test_03_prd.py
-python3 -m pytest tests/test_03_baseline.py
-python3 -m pytest tests/test_05_dev.py
-python3 -m pytest tests/test_06_verification.py
-python3 -m pytest tests/test_07_acceptance.py
-python3 -m pytest tests/test_08_closeout.py
-python3 -m pytest tests/test_09_lint.py
-python3 -m pytest tests/test_09_request_changes.py
-python3 -m pytest tests/test_09_ci.py
-python3 -m pytest tests/test_09_security.py
-python3 -m pytest tests/test_09_perf.py       # 1000 需求/200 PRD 规模基准
-python3 -m pytest tests/test_10_dist.py       # 打包与可重现构建
-python3 -m pytest tests/test_10_install.py    # 安装模拟与相对路径解析
-python3 -m pytest tests/test_10_pilot.py      # 隔离端到端试点（含 Claude Code 真调用）
-python3 -m compileall skills/neo-skill/runtime
+./scripts/check.sh --fast    # 静态检查：compileall + ruff + mypy（秒级）
+./scripts/check.sh           # 再加上按文件分批的黑盒测试
+./scripts/check.sh --tests   # 只跑测试
 ```
+
+CI 用的是同一套命令（`.github/workflows/ci.yml`），所以本地绿等于 CI 绿。
+
+单独跑某个文件（调试时用）：
+
+```bash
+python3 -m pytest tests/test_03_prd.py -q     # PRD、自检、批准
+python3 -m pytest tests/test_09_perf.py -q    # 1000 需求/200 PRD 性能基准
+python3 -m pytest tests/test_10_pilot.py -q   # 隔离端到端试点（含 Claude Code 真调用）
+```
+
+**为什么要分批**：每个用例都起 CLI 子进程，单文件 10–90 秒，`pytest tests/` 全量要 6–10 分钟。
+分批能立刻定位哪一批坏了，也避免把大夹具一次挂进内存。
+
+**静态检查的意义**：`compileall` 只查语法，对 `Optional` 未收窄、`dict|None` 上 `.get()`、
+参数类型不匹配这类问题是全绿的 —— 这些恰恰是只有运行到那条路径才炸的 bug。`ruff` 与
+`mypy` 就是补这一层。规则集刻意只开「能抓真错误」的部分，不开排版偏好。
 
 依赖：Python 3.11+ 与 PyYAML 6.x；无数据库、无服务端、不联网。
 

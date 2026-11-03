@@ -17,7 +17,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
 
 from conftest import read, run_cli, write
 from helpers_03 import (

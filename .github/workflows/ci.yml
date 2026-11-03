@@ -6,7 +6,8 @@ name: flow-core
 #   - 语法检查（compileall）失败 → 作业失败；
 #   - 静态检查（ruff）或类型检查（mypy）失败 → 作业失败；
 #   - 每一批黑盒测试失败 → 作业失败（按文件循环，单文件失败立即中断）；
-#   - 在临时初始化项目上跑 `doctor --strict` 与 `lint --json`，**非零退出码即失败**。
+#   - 在临时初始化项目上跑 `doctor --strict` 与 `lint --json`，**非零退出码即失败**；
+#   - 安装模拟（install-sim.sh）与隔离端到端试点（pilot.sh）各跑一遍，**非零退出码即失败**。
 #
 # 注意（如实呈现能力边界，SRS §9）：lint/CI 是**流程治理**，不是不可绕过的安全边界。
 # 它能发现「有人绕过 Skill 直接改文件」留下的不一致，但无法实时阻止这种编辑；
@@ -70,13 +71,16 @@ jobs:
       - name: 黑盒测试（按文件循环）
         # 不跑 `pytest tests/` 全量：规模夹具与单文件隔离都按批次来（共享设计 §10）。
         # 单文件失败立即中断 -> 非零退出码 -> 作业失败。
+        # `-m "not external"` 排除依赖本机 claude CLI 的用例（CI 无凭据，且调用不确定）；
+        # 端到端链路本身由下面的 pilot.sh 一步覆盖。
         run: |
           set -euo pipefail
           for f in tests/test_01_*.py tests/test_02_*.py tests/test_03_*.py \
                    tests/test_04_*.py tests/test_05_*.py tests/test_06_*.py \
-                   tests/test_07_*.py tests/test_08_*.py tests/test_09_*.py; do
+                   tests/test_07_*.py tests/test_08_*.py tests/test_09_*.py \
+                   tests/test_10_*.py; do
             echo "=== $f ==="
-            python -m pytest "$f" -q
+            python -m pytest "$f" -q -m "not external"
           done
 
       - name: 在临时初始化项目上跑 doctor 与 lint
@@ -142,3 +146,25 @@ jobs:
           fi
           grep -q "MISSING_REQUIRED_PATH" "$REPORT"
           echo "lint 以非零退出码报告了 MISSING_REQUIRED_PATH"
+
+      - name: 安装模拟（install-sim.sh）
+        # 验证「随包资源」这一层：六个 SKILL.md 都被识别（skills.sh 只认有
+        # name + description 的），runtime/（flow-core + 规则 + 模板）随 skill 目录走，
+        # 且安装后的 flow-core 只靠相对位置解析资源，不依赖源码仓库路径。
+        # 这是 SRS-FR-011 的实质内容，必须由 CI 守着。
+        run: |
+          set -euo pipefail
+          TARGET="$(mktemp -d)"
+          ./scripts/install-sim.sh --target "$TARGET"
+
+      - name: 隔离端到端试点（pilot.sh）
+        # 在仓库之外的全新临时目录跑完整 P0 主链路：
+        # 初始化 → 需求（grilling/确认/排期）→ PRD（评审/批准）→
+        # 开发（门禁/Spec/验证）→ 人工验收 → 收尾同步，
+        # 并断言试点前后 ~/.claude/skills、~/.agents 与仓库目录零改动。
+        # SRS §10.1 的七步验收就是这条链，CI 上必须真的走一遍。
+        # 不加 --with-claude：CI 没有 Claude Code 凭据；真实调用由 test_10_pilot.py
+        # 在本地按需触发（不可用时 skip 并写明原因）。
+        run: |
+          set -euo pipefail
+          ./scripts/pilot.sh

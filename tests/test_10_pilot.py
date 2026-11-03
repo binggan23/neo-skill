@@ -4,8 +4,13 @@
 并让证据分散）。断言全部落在**试点自己产出的终态**上：`evidence/assertions.txt`、
 `evidence/lint.json`、`evidence/index-status.json`、状态历史副本与快照比对结果。
 
-Claude Code 真调用单独一个用例，`claude` 不可用时 `pytest.skip` 并写明原因——
+Claude Code 真调用单独一个用例，标记 `@pytest.mark.external`：
+它依赖本机安装并已登录的 `claude` CLI，且一次调用要几十秒到几分钟，
+不具备 CI 上的确定性。`claude` 不可用时 `pytest.skip` 并写明原因——
 不伪造任何"跑过"的结论。
+
+默认执行时用 `-m "not external"` 排除（见 scripts/check.sh 与 CI）；
+本地想验证真实调用时去掉该过滤，或直接跑 `scripts/pilot.sh --with-claude`。
 """
 
 from __future__ import annotations
@@ -219,6 +224,7 @@ def claude_ok() -> str:
     return binary
 
 
+@pytest.mark.external
 def test_pilot_claude_code_真调用(claude_ok: str, tmp_path: Path) -> None:
     env = dict(os.environ)
     env.pop("NEO_SKILL_HOME", None)

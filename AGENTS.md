@@ -10,6 +10,11 @@ Issues and specs live as local markdown under `.scratch/<feature-slug>/`. See `d
 
 Default five triage roles, label string equal to the role name. See `docs/agents/triage-labels.md`.
 
+### P0 流程与版本演进
+
+理解阶段 Skill 如何协作、修改状态/门禁/基线/恢复，或规划后续版本前，先读
+[流程与演进目录](docs/agents/p0-workflow/Contents.md)，再按任务加载分篇；图为概览，规则与实现差异见文内说明。
+
 ### 探索与代码导航：subagent + CodeGraph
 
 探索（文件地图、实现落点、调用链与影响面、外部一手资料）**派 subagent 去读**（`Explore` 类型，见

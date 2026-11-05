@@ -23,3 +23,11 @@ node_modules/
 tmptest/
 # 本地复跑 CI 负向验证时产生的报告
 lint-report.json
+
+# Archify 渲染产物与回执（本地生成，源 JSON 入库）
+.archify/**/*.html
+.archify/**/*.finalize.json
+.archify/**/*.finalize-summary.json
+.archify/**/*.delivery.json
+.archify/**/*.delivery-pending.json
+.archify/**/*.browser-check.json

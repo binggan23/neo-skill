@@ -4,7 +4,7 @@
 
 ## 四张图（源在仓库，HTML 本地重建）
 
-四份 Architect JSON 源已入库；HTML 是可复现的渲染产物，不入库（3.3MB，且只有人看，AI 应读 Markdown）。
+四份 Archify JSON 源已入库；`.archify/` 整体不入库（渲染产物共 3.3MB，且只有人看，AI 应读 Markdown）。已跟踪的四份源不受忽略规则影响，重建后 `git status` 保持干净。
 
 | 图 | 内容 | 源 |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ JSON 源与 HTML 字节均未修改，因此旧校验结果仍对应同一份源
 本地目录共 36 个文件，清理后保留 24 个（4 份源 + 4 个 HTML + 16 份回执）：
 
 - 4 个 JSON 源：**入库**，是本目录引用的可复现输入。
-- 4 个 HTML + 16 份回执：**本地保留、不入库**（`.gitignore` 已排除）。回执记录来源 hash 与浏览器检查依据，重建时重新生成。
+- 4 个 HTML + 16 份回执：**本地保留、不入库**（`.archify/` 已在 `.gitignore` 排除）。回执记录来源 hash 与浏览器检查依据，重建时重新生成。
 
 已删除 12 个只属于失败尝试的文件：`candidate.json`、`main.json`、`03.json`，以及 `neo-skill-p0-flow`、`neo-skill-p0-main-flow`、`03-state-machines` 各自的失败 finalize、summary、delivery-pending 回执。未改动其他 `.archify/` 请求目录。
 

@@ -1,0 +1,194 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Neo Skill P0 ③：PRD 状态机",
+    "subtitle": "批准与评审是两个独立确认点；CR 把基线拉回评审",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-neo-skill-p0-flow-20261103-213934/03a-prd-states.html",
+    "repository": {
+      "url": "https://github.com/binggan23/neo-skill",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ff6a747dfd079f23f0e77efb0db455c2b5f40396"
+    }
+  },
+  "mainPath": [
+    "draft",
+    "in_review",
+    "approved",
+    "developing",
+    "ready",
+    "accepted"
+  ],
+  "states": [
+    {
+      "id": "draft",
+      "type": "start",
+      "label": "DRAFT",
+      "sublabel": "草稿可改",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/rules/flow.yaml",
+          "line": 47,
+          "label": "prd.states"
+        }
+      ]
+    },
+    {
+      "id": "in_review",
+      "type": "waiting",
+      "label": "IN_REVIEW",
+      "sublabel": "等批准"
+    },
+    {
+      "id": "approved",
+      "type": "active",
+      "label": "APPROVED",
+      "sublabel": "已锁 hash"
+    },
+    {
+      "id": "developing",
+      "type": "active",
+      "label": "DEVELOPING",
+      "sublabel": "开发中"
+    },
+    {
+      "id": "ready",
+      "type": "waiting",
+      "label": "READY",
+      "sublabel": "等人工验收"
+    },
+    {
+      "id": "accepted",
+      "type": "success",
+      "label": "ACCEPTED",
+      "sublabel": "收尾后 DONE"
+    },
+    {
+      "id": "changes",
+      "type": "neutral",
+      "label": "CHANGES_REQUESTED",
+      "sublabel": "退回修改"
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "REJECTED",
+      "sublabel": "终态"
+    },
+    {
+      "id": "superseded",
+      "type": "neutral",
+      "label": "SUPERSEDED",
+      "sublabel": "历史可查"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "draft",
+      "to": "in_review",
+      "label": "提交评审",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t2",
+      "from": "in_review",
+      "to": "approved",
+      "label": "批准",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t3",
+      "from": "approved",
+      "to": "developing",
+      "label": "start",
+      "variant": "default"
+    },
+    {
+      "id": "t4",
+      "from": "developing",
+      "to": "ready",
+      "label": "交验收",
+      "variant": "default"
+    },
+    {
+      "id": "t5",
+      "from": "ready",
+      "to": "accepted",
+      "label": "验收通过",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t6",
+      "from": "in_review",
+      "to": "changes",
+      "label": "request-changes",
+      "variant": "security"
+    },
+    {
+      "id": "t7",
+      "from": "changes",
+      "to": "in_review",
+      "label": "重交",
+      "variant": "dashed"
+    },
+    {
+      "id": "t8",
+      "from": "in_review",
+      "to": "rejected",
+      "label": "reject",
+      "variant": "security"
+    },
+    {
+      "id": "t9",
+      "from": "approved",
+      "to": "in_review",
+      "label": "CR",
+      "variant": "security"
+    },
+    {
+      "id": "t10",
+      "from": "developing",
+      "to": "in_review",
+      "label": "开发中 CR",
+      "variant": "security"
+    },
+    {
+      "id": "t11",
+      "from": "ready",
+      "to": "developing",
+      "label": "验收不通过",
+      "variant": "security"
+    },
+    {
+      "id": "t12",
+      "from": "approved",
+      "to": "superseded",
+      "label": "被取代",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "两个独立确认点",
+      "items": [
+        "submit-review：stakeholder 提交",
+        "approve：需求负责人批准并锁 hash",
+        "不能合并成一次确认"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "CR 是改已批准内容的唯一正路",
+      "items": [
+        "approved/developing/ready 都能被 CR 拉回 in_review",
+        "旧 Spec、代码、验证证据标记基线失效",
+        "重新批准：版本 +1、新 hash、旧历史保留"
+      ]
+    }
+  ]
+}

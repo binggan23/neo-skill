@@ -1,0 +1,160 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Neo Skill P0 ④：需求（REQ）状态机",
+    "subtitle": "排期前可改可取消；进入 PRD 后改计划必须走 PRD 变更",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-neo-skill-p0-flow-20261103-213934/03b-req-states.html",
+    "repository": {
+      "url": "https://github.com/binggan23/neo-skill",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ff6a747dfd079f23f0e77efb0db455c2b5f40396"
+    }
+  },
+  "mainPath": [
+    "new",
+    "triaged",
+    "planned",
+    "in_prd",
+    "done"
+  ],
+  "states": [
+    {
+      "id": "new",
+      "type": "start",
+      "label": "NEW",
+      "sublabel": "草稿，可续写",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/rules/flow.yaml",
+          "line": 35,
+          "label": "req.states"
+        }
+      ]
+    },
+    {
+      "id": "triaged",
+      "type": "active",
+      "label": "TRIAGED",
+      "sublabel": "共识已确认"
+    },
+    {
+      "id": "planned",
+      "type": "active",
+      "label": "PLANNED",
+      "sublabel": "已排期 + 目标版本"
+    },
+    {
+      "id": "in_prd",
+      "type": "active",
+      "label": "IN_PRD",
+      "sublabel": "已交给 PRD"
+    },
+    {
+      "id": "done",
+      "type": "success",
+      "label": "DONE",
+      "sublabel": "验收 + 收尾全部完成"
+    },
+    {
+      "id": "deferred",
+      "type": "neutral",
+      "label": "DEFERRED",
+      "sublabel": "暂缓，可恢复"
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "REJECTED",
+      "sublabel": "终态"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "r1",
+      "from": "new",
+      "to": "triaged",
+      "label": "req confirm",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r2",
+      "from": "triaged",
+      "to": "planned",
+      "label": "req plan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r3",
+      "from": "planned",
+      "to": "in_prd",
+      "label": "prd create",
+      "variant": "default"
+    },
+    {
+      "id": "r4",
+      "from": "in_prd",
+      "to": "done",
+      "label": "closeout",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r5",
+      "from": "planned",
+      "to": "triaged",
+      "label": "unplan",
+      "variant": "dashed"
+    },
+    {
+      "id": "r6",
+      "from": "new",
+      "to": "deferred",
+      "label": "defer",
+      "variant": "security"
+    },
+    {
+      "id": "r7",
+      "from": "triaged",
+      "to": "deferred",
+      "label": "defer",
+      "variant": "security"
+    },
+    {
+      "id": "r8",
+      "from": "deferred",
+      "to": "triaged",
+      "label": "恢复",
+      "variant": "dashed"
+    },
+    {
+      "id": "r9",
+      "from": "triaged",
+      "to": "rejected",
+      "label": "reject",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "排期的三条路",
+      "items": [
+        "拒绝 → 保持 TRIAGED，留在需求池",
+        "同意但缺版本 → 继续问，不猜",
+        "同意且确认版本 → PLANNED"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "进 PRD 之后不能无记录改期",
+      "items": [
+        "PLANNED 可 unplan 回到 TRIAGED",
+        "IN_PRD 之后改期必须走 PRD 变更或重新评审",
+        "废弃走 defer/reject，编号与历史保留"
+      ]
+    }
+  ]
+}

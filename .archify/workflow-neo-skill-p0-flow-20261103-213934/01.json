@@ -1,0 +1,334 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Neo Skill P0 ①：需求对齐 → 排期 → PRD → 批准",
+    "subtitle": "每个阶段由哪个 Skill 驱动、调哪条 flow-core 命令、人在哪签字、状态怎么变",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-neo-skill-p0-flow-20261103-213934/01-requirements-to-approval.html",
+    "repository": {
+      "url": "https://github.com/binggan23/neo-skill",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ff6a747dfd079f23f0e77efb0db455c2b5f40396"
+    }
+  },
+  "lanes": [
+    {
+      "id": "skill",
+      "label": "Skill（自然语言入口）"
+    },
+    {
+      "id": "human",
+      "label": "人的决定（不可代签）"
+    },
+    {
+      "id": "cli",
+      "label": "flow-core 命令"
+    },
+    {
+      "id": "fs",
+      "label": "产出（文件 / 状态）"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p1",
+      "label": "需求草稿 + grilling",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "p2",
+      "label": "共识确认 + 排期",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p3",
+      "label": "PRD 正文 + 自审",
+      "fromCol": 4,
+      "toCol": 4
+    },
+    {
+      "id": "p4",
+      "label": "评审 + 批准",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "emphasis"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "req_skill",
+      "lane": "skill",
+      "col": 0,
+      "type": "frontend",
+      "label": "requirements Skill",
+      "sublabel": "草稿 + grilling",
+      "tag": "设计树 frontier",
+      "sources": [
+        {
+          "path": "skills/requirements/SKILL.md",
+          "line": 42,
+          "label": "阶段一：草稿"
+        }
+      ]
+    },
+    {
+      "id": "req_create",
+      "lane": "cli",
+      "col": 1,
+      "type": "backend",
+      "label": "req create / align",
+      "sublabel": "REQ-001 status=NEW",
+      "tag": "查重只提示不删",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/commands/req.py",
+          "line": 136
+        }
+      ]
+    },
+    {
+      "id": "req_file",
+      "lane": "fs",
+      "col": 1,
+      "type": "database",
+      "label": "REQ-001-<slug>.md",
+      "sublabel": "front matter + 六章节正文"
+    },
+    {
+      "id": "confirm",
+      "lane": "human",
+      "col": 2,
+      "type": "security",
+      "label": "stakeholder 确认共识",
+      "sublabel": "--actor --confirm",
+      "tag": "NEW → TRIAGED",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/state.py",
+          "line": 133,
+          "label": "require_member"
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "lane": "human",
+      "col": 3,
+      "type": "security",
+      "label": "需求负责人排期",
+      "sublabel": "不猜版本，缺则继续问",
+      "tag": "TRIAGED → PLANNED",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/rules/flow.yaml",
+          "line": 60,
+          "label": "gates.req.plan"
+        }
+      ]
+    },
+    {
+      "id": "plan_no",
+      "lane": "cli",
+      "col": 2,
+      "type": "security",
+      "label": "拒绝排期",
+      "sublabel": "保持 TRIAGED，留在需求池"
+    },
+    {
+      "id": "prd_skill",
+      "lane": "skill",
+      "col": 4,
+      "type": "frontend",
+      "label": "prd Skill",
+      "sublabel": "正文 + 自审",
+      "tag": "≤8 场景 / 每场景 ≥1 AC",
+      "sources": [
+        {
+          "path": "skills/prd/SKILL.md",
+          "line": 59,
+          "label": "阶段一：创建草稿"
+        }
+      ]
+    },
+    {
+      "id": "prd_create",
+      "lane": "cli",
+      "col": 5,
+      "type": "backend",
+      "label": "prd create",
+      "sublabel": "仅 PLANNED 主需求",
+      "tag": "主需求转 IN_PRD",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/metadata.py",
+          "line": 617
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "lane": "human",
+      "col": 5,
+      "type": "security",
+      "label": "stakeholder 提交评审",
+      "sublabel": "确认点 ①",
+      "tag": "DRAFT → IN_REVIEW"
+    },
+    {
+      "id": "approve",
+      "lane": "human",
+      "col": 4,
+      "type": "security",
+      "label": "需求负责人批准",
+      "sublabel": "确认点 ②",
+      "tag": "IN_REVIEW → APPROVED"
+    },
+    {
+      "id": "hash",
+      "lane": "fs",
+      "col": 5,
+      "type": "database",
+      "label": "content_hash",
+      "sublabel": "prd.md + 锁定字段 + test-cases",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/hashing.py",
+          "line": 47,
+          "label": "prd_content_hash"
+        }
+      ]
+    },
+    {
+      "id": "cr",
+      "lane": "cli",
+      "col": 4,
+      "type": "security",
+      "label": "prd cr create",
+      "sublabel": "改已批准内容的唯一正路",
+      "tag": "旧基线标记失效",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/changerequest.py",
+          "line": 71
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "req_skill",
+      "to": "req_create",
+      "label": "调命令",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e1",
+      "from": "req_create",
+      "to": "req_file",
+      "variant": "default"
+    },
+    {
+      "id": "e2",
+      "from": "req_file",
+      "to": "confirm",
+      "label": "未确认仍是 NEW",
+      "variant": "security"
+    },
+    {
+      "id": "e3",
+      "from": "confirm",
+      "to": "plan",
+      "label": "是否设置排期？",
+      "variant": "security"
+    },
+    {
+      "id": "e4",
+      "from": "plan",
+      "to": "plan_no",
+      "label": "拒绝或缺版本",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e5",
+      "from": "plan",
+      "to": "prd_skill",
+      "label": "PLANNED",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e6",
+      "from": "prd_skill",
+      "to": "prd_create",
+      "label": "调命令",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e7",
+      "from": "prd_create",
+      "to": "review",
+      "label": "自审无 error",
+      "variant": "security"
+    },
+    {
+      "id": "e8",
+      "from": "review",
+      "to": "approve",
+      "label": "单独再问一次",
+      "variant": "security"
+    },
+    {
+      "id": "e9",
+      "from": "approve",
+      "to": "hash",
+      "label": "锁基线",
+      "variant": "default"
+    },
+    {
+      "id": "e10",
+      "from": "hash",
+      "to": "cr",
+      "label": "要改内容",
+      "variant": "security",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "三个不可代签的决定",
+      "items": [
+        "req confirm：stakeholder 确认共识 → NEW 变 TRIAGED",
+        "req plan：需求负责人同意并给版本 → TRIAGED 变 PLANNED",
+        "prd submit-review 与 prd approve 是两个独立确认点，不能合并"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "失败一律零副作用",
+      "items": [
+        "职责不匹配 → ROLE_MISMATCH，状态不变",
+        "缺 --actor 或 --confirm → CONFIRMATION_REQUIRED",
+        "缺目标版本 → RELEASE_REQUIRED，不猜版本",
+        "PRD 自审有 error → VALIDATION_FAILED，不得批准"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "hash 只覆盖三样",
+      "items": [
+        "prd.md 正文",
+        "metadata 中的锁定范围字段",
+        "存在的 test-cases.md",
+        "reviews/、changes/、history、status 是追加记录，不计入 hash"
+      ]
+    }
+  ]
+}

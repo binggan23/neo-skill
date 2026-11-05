@@ -1,0 +1,367 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Neo Skill P0 ②：开发门禁 → TDD → 验证证据 → 人工验收 → 收尾",
+    "subtitle": "门禁失败零写入；验证证据逐字节留存；只有全部 AC 通过且需求负责人确认才 ACCEPTED",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-neo-skill-p0-flow-20261103-213934/02-dev-to-closeout.html",
+    "repository": {
+      "url": "https://github.com/binggan23/neo-skill",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ff6a747dfd079f23f0e77efb0db455c2b5f40396"
+    }
+  },
+  "lanes": [
+    {
+      "id": "skill",
+      "label": "Skill（自然语言入口）"
+    },
+    {
+      "id": "human",
+      "label": "人的决定（不可代签）"
+    },
+    {
+      "id": "cli",
+      "label": "flow-core 命令"
+    },
+    {
+      "id": "fs",
+      "label": "产出（证据 / 状态）"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p1",
+      "label": "门禁 + 建 Spec",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "p2",
+      "label": "TDD + 验证",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p3",
+      "label": "人工验收",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p4",
+      "label": "收尾事务",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "nodes": [
+    {
+      "id": "dev_skill",
+      "lane": "skill",
+      "col": 0,
+      "type": "frontend",
+      "label": "dev Skill",
+      "sublabel": "必须显式绑定 PRD",
+      "tag": "不猜是哪一份",
+      "sources": [
+        {
+          "path": "skills/dev/SKILL.md",
+          "line": 15,
+          "label": "入口：必须显式绑定"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "lane": "cli",
+      "col": 0,
+      "type": "backend",
+      "label": "dev gate",
+      "sublabel": "十项检查只读",
+      "tag": "失败零写入",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/development.py",
+          "line": 303,
+          "label": "evaluate_gate"
+        }
+      ]
+    },
+    {
+      "id": "gate_fail",
+      "lane": "cli",
+      "col": 1,
+      "type": "security",
+      "label": "门禁拒绝",
+      "sublabel": "不建 Spec / 不改状态 / 不动代码"
+    },
+    {
+      "id": "start",
+      "lane": "cli",
+      "col": 2,
+      "type": "backend",
+      "label": "dev start",
+      "sublabel": "建 Spec/Plan/Tasks",
+      "tag": "APPROVED → DEVELOPING",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/rules/flow.yaml",
+          "line": 92,
+          "label": "gates.dev.start"
+        }
+      ]
+    },
+    {
+      "id": "specs",
+      "lane": "fs",
+      "col": 2,
+      "type": "database",
+      "label": "06-specs/<module>/PRD-NNN/",
+      "sublabel": "spec.md plan.md tasks.md + .baseline.yaml"
+    },
+    {
+      "id": "tdd",
+      "lane": "skill",
+      "col": 3,
+      "type": "frontend",
+      "label": "TDD 实现",
+      "sublabel": "只写 src/ tests/ 06-specs/",
+      "tag": "越界停 → 要求 CR"
+    },
+    {
+      "id": "verify",
+      "lane": "cli",
+      "col": 3,
+      "type": "backend",
+      "label": "dev verify",
+      "sublabel": "执行项目声明的命令",
+      "tag": "guard 防伪造",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/verification.py",
+          "line": 325,
+          "label": "code_version"
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "lane": "fs",
+      "col": 3,
+      "type": "database",
+      "label": "verification.json + raw-*.log",
+      "sublabel": "原始输出逐字节 + 退出码 + 环境"
+    },
+    {
+      "id": "submit",
+      "lane": "cli",
+      "col": 4,
+      "type": "backend",
+      "label": "dev submit-acceptance",
+      "sublabel": "全部适用项 pass 才允许",
+      "tag": "DEVELOPING → READY",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/commands/dev.py",
+          "line": 710
+        }
+      ]
+    },
+    {
+      "id": "acc_skill",
+      "lane": "skill",
+      "col": 4,
+      "type": "frontend",
+      "label": "acceptance Skill",
+      "sublabel": "Demo + 逐条 AC checklist",
+      "tag": "AI 只能建议",
+      "sources": [
+        {
+          "path": "skills/acceptance/SKILL.md",
+          "line": 50,
+          "label": "阶段一：准备 Demo"
+        }
+      ]
+    },
+    {
+      "id": "acc_sign",
+      "lane": "human",
+      "col": 4,
+      "type": "security",
+      "label": "需求负责人逐条验收",
+      "sublabel": "pass / fail / blocked + 证据",
+      "tag": "READY → ACCEPTED",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/rules/flow.yaml",
+          "line": 96,
+          "label": "gates.acceptance.approve"
+        }
+      ]
+    },
+    {
+      "id": "reject",
+      "lane": "human",
+      "col": 5,
+      "type": "security",
+      "label": "不通过 / 有条件通过",
+      "sublabel": "退回 DEVELOPING",
+      "tag": "不得 ACCEPTED"
+    },
+    {
+      "id": "closeout",
+      "lane": "cli",
+      "col": 5,
+      "type": "messagebus",
+      "label": "acceptance closeout",
+      "sublabel": "PREPARED → COMMITTING → COMMITTED",
+      "tag": "主需求最后才 DONE",
+      "sources": [
+        {
+          "path": "skills/neo-skill/runtime/flow_core/closeout.py",
+          "line": 330,
+          "label": "build"
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "lane": "fs",
+      "col": 5,
+      "type": "database",
+      "label": "REQ DONE",
+      "sublabel": "功能现状 + 场景 + 索引一致"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "dev_skill",
+      "to": "gate",
+      "label": "10 项门禁",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e1",
+      "from": "gate",
+      "to": "gate_fail",
+      "label": "任一项不过",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e2",
+      "from": "gate",
+      "to": "start",
+      "label": "全绿才放行",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "start",
+      "to": "specs",
+      "label": "落盘",
+      "variant": "default"
+    },
+    {
+      "id": "e4",
+      "from": "specs",
+      "to": "tdd",
+      "label": "按 Tasks 实现",
+      "variant": "default"
+    },
+    {
+      "id": "e5",
+      "from": "tdd",
+      "to": "verify",
+      "label": "跑验证",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e6",
+      "from": "verify",
+      "to": "evidence",
+      "label": "存原始证据",
+      "variant": "default"
+    },
+    {
+      "id": "e7",
+      "from": "evidence",
+      "to": "submit",
+      "label": "全部 pass",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e8",
+      "from": "submit",
+      "to": "acc_skill",
+      "label": "自动进入验收",
+      "variant": "default"
+    },
+    {
+      "id": "e9",
+      "from": "acc_skill",
+      "to": "acc_sign",
+      "label": "人工逐条记录",
+      "variant": "security"
+    },
+    {
+      "id": "e10",
+      "from": "acc_sign",
+      "to": "reject",
+      "label": "有 fail 或 blocked",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e11",
+      "from": "acc_sign",
+      "to": "closeout",
+      "label": "全部 pass 且确认",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e12",
+      "from": "closeout",
+      "to": "done",
+      "label": "事务 COMMITTED",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "门禁十项（任一不过就零写入）",
+      "items": [
+        "显式绑定 PRD、PRD 存在、状态允许、批准记录有效",
+        "hash 一致、项目约束已确认、团队已配置",
+        "主需求关系正确、模块与目录一致、上一轮基线有效"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "验证证据是交付物，不是摘要",
+      "items": [
+        "raw-*.log 逐字节原样保存",
+        "单独记退出码、执行环境、代码版本",
+        "未执行/阻塞/失败不得记成 pass；不适用必须写理由",
+        "guard 检删除用例、弱化断言、跳测试、改 AC"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "ACCEPTED ≠ 完成",
+      "items": [
+        "收尾事务同步功能现状、场景状态、三个索引",
+        "主需求 DONE 永远排在最后一步",
+        "部分失败保留「已确认通过，收尾未完成」，用 recover run 续跑"
+      ]
+    }
+  ]
+}

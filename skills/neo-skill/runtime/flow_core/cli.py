@@ -31,6 +31,7 @@ from .commands import index_cmd as index_command
 from .commands import init as init_command
 from .commands import lint_cmd as lint_command
 from .commands import prd as prd_command
+from .commands import progress as progress_command
 from .commands import recover as recover_command
 from .commands import req as req_command
 from .commands import upstream as upstream_command
@@ -50,6 +51,7 @@ COMMAND_MODULES = (
     recover_command,
     lint_command,
     upstream_command,
+    progress_command,
 )
 
 PROG = "flow-core"

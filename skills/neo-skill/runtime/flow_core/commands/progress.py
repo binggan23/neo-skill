@@ -657,7 +657,11 @@ def _human_notes(data: dict[str, Any]) -> list[str]:
 
     notes.append("不确定性：" if data["uncertainty"] else "不确定性：无")
     for item in data["uncertainty"]:
-        notes.append(f"  - [{item['reason']}] {item['source']}：{item['detail']}")
+        # detail 已自带来源与建议（如「<url> 返回的是页面渲染数据…」），
+        # 再前缀一遍 source 会变成「<url>：<url> 返回…」的重复。
+        detail = item["detail"]
+        prefix = "" if detail.startswith(item["source"]) else f"{item['source']}："
+        notes.append(f"  - [{item['reason']}] {prefix}{detail}")
 
     notes.append(f"{LOCAL_HEADING}：")
     if data["local_reminders"]:

@@ -562,3 +562,16 @@ def test_非_GitHub_页面给通用建议而不是瞎编接口(tmp_path: Path) -
     assert entry["reason"] == "unparsable"
     assert "api.github.com" not in entry["detail"], "不能给不属于该站点的地址"
     assert "数据接口" in entry["detail"]
+
+
+def test_人类可读输出的不确定性不重复来源网址(tmp_path: Path) -> None:
+    """detail 已自带来源时不再前缀一遍——真实复验时看到过「<url>：<url> 返回…」。"""
+    page = fixture(tmp_path, "page.json", GITHUB_PAGE_PAYLOAD)
+
+    result = report_for(tmp_path, page, identifier="https://github.com/example/upstream",
+                        json_output=False)
+
+    assert result.code == 0, result
+    lines = [line for line in result.stdout.splitlines() if "unparsable" in line]
+    assert len(lines) == 1, result.stdout
+    assert lines[0].count(page) == 1, f"来源网址被重复拼接：{lines[0]}"

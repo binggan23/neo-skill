@@ -323,7 +323,7 @@ ticket 10 验收清单逐条：
 
 | 验收项 | 结论 |
 | --- | --- |
-| 标准安装命令能安装并发现 Skill/CLI/规则/模板 | 本地路径通过（§3）；远端 `npx` **阻塞**（§7） |
+| 标准安装命令能安装并发现 Skill/CLI/规则/模板 | 通过（本地路径 §3；远端 `npx` 已复验，见 §7 与 §11.1） |
 | 安装后运行时只依赖随包资源与项目规则基线 | 通过（§3，整目录搬走后仍可跑） |
 | 升级说明只用通用更新命令 | 通过（`README.md`、`skills/neo-skill/SKILL.md` 均为 `npx skills@latest update`） |
 | Claude Code 能发现并调用 `project`/`requirements`/`prd`/`dev`/`acceptance` | 通过（6 个 skill 被列出；`project` skill 驱动 `doctor` 成功） |

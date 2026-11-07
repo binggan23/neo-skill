@@ -157,13 +157,17 @@ def test_bare_invocation_is_usage_error(project: Path) -> None:
 
 
 def test_all_declared_command_groups_are_registered(project: Path) -> None:
-    """ticket 09 后命令组全部上线：九组都可调用（不再有「计划中」的占位组）。
+    """ticket 09 后命令组全部上线：十一组都可调用（不再有「计划中」的占位组）。
 
     历史上未实现的组必须**不注册**（调用是用法错误而非伪装成功），
     `req`(02)/`prd`(03)/`dev`(05)/`acceptance`(07)/`index`+`recover`(08)/`lint`(09)
     上线后逐一从那个参数化列表移出；列表清空即收敛成这条断言。
+    v0.1.1 ticket 01/02 又上线两组：`upstream`（绑定写入与查询）与 `progress`（只读进度报告）。
     """
-    declared = ("init", "doctor", "req", "prd", "dev", "acceptance", "index", "recover", "lint")
+    declared = (
+        "init", "doctor", "req", "prd", "dev", "acceptance", "index", "recover", "lint",
+        "upstream", "progress",
+    )
     for group in declared:
         result = run_cli(project, group, "--help", json_output=False)
         assert result.code == 0, f"{group} 未注册：{result.stderr[-500:]}"

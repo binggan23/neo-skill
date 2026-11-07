@@ -19,8 +19,14 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BUILD_DIST = REPO_ROOT / "scripts" / "build-dist.sh"
-RUNTIME_DIR = REPO_ROOT / "skills" / "neo-skill" / "runtime"
+SKILLS_DIR = REPO_ROOT / "skills"
+RUNTIME_DIR = SKILLS_DIR / "neo-skill" / "runtime"
 FLOW_CORE = RUNTIME_DIR / "flow-core"
+
+
+def shipped_skills() -> list[str]:
+    """随包的 Skill 集合：`skills/` 下含 SKILL.md 的目录（自动派生，不写死名单）。"""
+    return sorted(path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md"))
 
 
 def _version() -> str:
@@ -75,13 +81,25 @@ def test_dist_顶层目录唯一(dist: Path) -> None:
     assert tops == {top}
 
 
-def test_dist_打包内容包含五个_skill_与运行时(dist: Path) -> None:
+def test_dist_打包内容包含全部_skill_与运行时(dist: Path) -> None:
     version = _version()
     top = f"neo-skill-{version}"
     with zipfile.ZipFile(dist / f"{top}.zip") as zf:
         names = set(zf.namelist())
-    for skill in ("project", "requirements", "prd", "dev", "acceptance", "neo-skill"):
+    expected = shipped_skills()
+    assert expected, "仓库 skills/ 下一个 SKILL.md 都没有"
+    for skill in expected:
         assert f"{top}/skills/{skill}/SKILL.md" in names, f"缺少 {skill} Skill"
+    # 分发包里的 SKILL.md 集合必须与仓库一致（不多不少，防止漏打新 Skill）
+    packed = {
+        name.split("/")[2]
+        for name in names
+        if name.startswith(f"{top}/skills/") and name.count("/") == 3 and name.endswith("/SKILL.md")
+    }
+    assert packed == set(expected), f"分发包的 Skill 集合与仓库不一致：{sorted(packed)} != {expected}"
+    # v0.1.1 新增的只读进度 Skill 必须在包里（它不在旧硬编码清单里）
+    assert "upstream-progress" in expected, "仓库里没有 upstream-progress Skill"
+    assert f"{top}/skills/upstream-progress/SKILL.md" in names
     # CLI、声明式规则、模板必须随包分发（FR-011）
     assert f"{top}/skills/neo-skill/runtime/flow-core" in names
     assert f"{top}/skills/neo-skill/runtime/rules/flow.yaml" in names

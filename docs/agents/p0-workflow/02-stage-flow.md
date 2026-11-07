@@ -91,7 +91,7 @@ neo-skill 路由
 | 用户问「上游做到哪了 / 最新发布了什么」 | `upstream status` 先看有没有绑定；有就 `progress report` | `upstream show`、`progress report` | 无 |
 | 没有绑定，用户愿意临时给 | 向用户要上游 URL + 至少一个来源，用临时查询 | `progress report --upstream … --source …` | 无（也**不**写回文档） |
 | 没有绑定，用户也不给 | 如实说“进度查询尚未配置”，给出绑定命令 | —（只给命令） | 无 |
-| 用户想长期跟踪 | 转给 [`project`](02-stage-flow.md) 阶段七：展示→确认→`upstream bind` | `upstream bind` | 写受管理区块（需 `--actor` + `--confirm`） |
+| 用户想长期跟踪 | 转给 [`project`](../../../skills/project/SKILL.md) 阶段七：展示→确认→`upstream bind` | `upstream bind` | 写受管理区块（需 `--actor` + `--confirm`） |
 
 三条口径固定：
 

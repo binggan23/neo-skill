@@ -216,6 +216,45 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 - 新增了成员/约束之后重跑 `init` **不会**回退用户内容；它只补缺失的文件与目录。
 - 复跑后建议再跑一次 `python3 <flow-core> lint` 看基线是否一致（只读，有 error 退出码 1）。
 
+## 阶段七：上游进度来源绑定（可选，SRS-FR-091 / 095）
+
+**在初始化收尾时问一句：这个项目有没有上游项目（上游仓库、产品线或项目标识）？**
+绑定只是**配置**（去哪个远端、看哪些资料），不是进度事实；进度查询由 `progress` 能力单独负责。
+
+流程（**先展示，后确认，再写入**）：
+
+1. **收集**：上游 URL 或项目标识（不允从 `origin`、分支名、目录名自动推断）+ 一至多个远端进度来源
+   （`https://…` 或 `file://…`，如 releases、CHANGELOG、roadmap、issues 列表）。信息不完整时**不要编**。
+2. **展示待记录内容与目标文档**：目标文档优先 `AGENTS.md`；没有时用 `README.md` 的 `## 上游进度来源` 小节；
+   两者都没有时新建 `README.md`（只创建不覆盖）。告诉用户「只写一个受管理区块，其他内容不动」。
+3. **取得明确确认后**才写入：
+
+```bash
+python3 <flow-core> upstream bind --root . \
+  --id https://github.com/example/upstream \
+  --source https://github.com/example/upstream/releases \
+  --source https://github.com/example/upstream/issues \
+  --actor <成员 id> --confirm --json
+python3 <flow-core> upstream show --root . --json     # 回显当前绑定（未配置 → 退出码 1）
+python3 <flow-core> upstream status --root . --json   # 只读：data.configured 为 false 也算成功
+```
+
+4. **确认后念一遍结果**：`data.identifier` + `data.sources` + `data.document`，让用户看到落点。
+
+| 分支 | 处理 |
+| --- | --- |
+| 用户说不绑定 / 没有上游 | **继续接入**，不改文档，明确告知「进度查询尚未配置」 |
+| 信息不完整（缺标识或来源） | 不写入；补齐后再问一轮，或按上一行继续接入 |
+| 已有不同绑定 | 返回 `UPSTREAM_BINDING_CONFLICT`，**不要**自己加 `--force`；先问哪份权威 |
+| 重复写相同内容 | 返回 `artifact.action: unchanged`，直接告诉用户无需改动 |
+| 团队未配置 | 不阻断绑定（绑定不是产品决策）；团队已配置而 `--actor` 不在名单 → `ACTOR_UNKNOWN` |
+
+**未配置上游不是失败**：接入流程照常走完。绑定缺失、拒绝或信息不完整时，
+必须**明确提示**「上游进度查询尚未配置」，并给出补绑定的确切命令；不得伪造配置，
+也不得把本地代码、业务文档或本地 roadmap 当作上游进度。
+
+`--doc agents|readme` 可强制目标文档；`--force` 只在用户明确要求替换已有绑定时加（仍只改区块）。
+
 ## 角色对照表（从 `rules/flow.yaml` 的 `gates` 读，不要硬编码）
 
 | 人工决策 | 需要的职责（`gates.<key>.role`） | 状态变化 |
@@ -245,6 +284,9 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 | `lint` | 结构/引用/hash/基线/收尾一致性检查 | 否（只读） |
 | `lint rules` | 项目规则基线 vs 随包规则的版本与字段一致性 | 否（只读） |
 | `recover list` / `recover --release-lock <对象> --actor --confirm` | 残留锁清理 | 是（需人工确认） |
+| `upstream bind --id <URL> --source <来源>[--source …] [--doc agents\|readme] --actor --confirm` | 记录上游绑定到 `AGENTS.md` / `README.md` 的受管理区块 | 是（需人工确认；区块外不动） |
+| `upstream show` | 展示当前绑定与来源文档（未配置 → 退出码 1，`UPSTREAM_NOT_CONFIGURED`） | 否（只读） |
+| `upstream status` | 只读报告 `data.configured`，供接入流程判断 | 否（只读） |
 
 ## 交接到下一阶段
 

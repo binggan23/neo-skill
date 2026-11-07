@@ -47,14 +47,13 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
-import os
 import re
 import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -83,7 +82,8 @@ GIT_TIMEOUT = 15.0
 REPORT_HEADING = "上游进度报告"
 LOCAL_HEADING = "本地提醒（不在上游进度内）"
 
-SUPPORTED_SCHEMES = ("http", "https", "file")
+# 与 `upstream bind` 共用同一份 scheme 白名单：绑定阶段就拒绝查不了的来源。
+SUPPORTED_SCHEMES = upstream_command.SUPPORTED_SOURCE_SCHEMES
 
 _DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _CHECKBOX_RE = re.compile(r"^\s*[-*+]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.*\S)\s*$")
@@ -172,7 +172,7 @@ def _resolve_inputs(workspace: Workspace,
                     args: argparse.Namespace) -> tuple[str, list[str], str]:
     """决定这次查谁：显式参数 > 持久化绑定 > 报错（绝不猜 origin/目录名）。"""
     cli_identifier = str(getattr(args, "upstream", None) or "").strip()
-    cli_sources = _normalize_sources(getattr(args, "sources", None))
+    cli_sources = upstream_command._normalize_sources(getattr(args, "sources", None))
     located = upstream_command._scan(workspace)
 
     if cli_identifier and cli_sources:
@@ -203,16 +203,6 @@ def _input_required(reason: str) -> FlowError:
                    "（临时查询不写回任何文档）",
         next_actions=[upstream_command.BIND_COMMAND, TEMP_QUERY_COMMAND],
     )
-
-
-def _normalize_sources(raw: list[str] | None) -> list[str]:
-    """去重保序：同一来源重复出现只抓一次。"""
-    seen: list[str] = []
-    for item in raw or []:
-        value = str(item).strip()
-        if value and value not in seen:
-            seen.append(value)
-    return seen
 
 
 # --------------------------------------------------------------------------
@@ -502,8 +492,7 @@ def _classify(inspected: list[Inspected]) -> tuple[list[Entry], list[dict[str, s
             kept.append(entry)
         entries = kept
 
-    now = _now()
-    threshold = now.date() - timedelta(days=STALE_DAYS)
+    threshold = fsutil.now().date() - timedelta(days=STALE_DAYS)
     for source in inspected:
         if source.latest_date is not None and source.latest_date < threshold:
             problems.append(Problem(
@@ -511,19 +500,6 @@ def _classify(inspected: list[Inspected]) -> tuple[list[Entry], list[dict[str, s
                 f"来源内最新日期 {source.latest_date.isoformat()} 早于 "
                 f"{threshold.isoformat()}（阈值 {STALE_DAYS} 天），可能已过期").to_dict())
     return entries, problems
-
-
-def _now() -> datetime:
-    """当前时间；`NEO_SKILL_NOW` 可覆盖（与 `fsutil.now_iso` 同一约定，便于测试固定时钟）。"""
-    override = os.environ.get("NEO_SKILL_NOW", "").strip()
-    if override:
-        try:
-            parsed = datetime.fromisoformat(override)
-        except ValueError:
-            parsed = None
-        if parsed is not None:
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    return datetime.now().astimezone()
 
 
 # --------------------------------------------------------------------------

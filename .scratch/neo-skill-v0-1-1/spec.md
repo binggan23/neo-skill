@@ -1,6 +1,6 @@
 # v0.1.1 可组合 Skills 与上游进度查询
 
-Status: ready-for-agent
+Status: resolved
 Version: v0.1.1
 
 ## Problem Statement

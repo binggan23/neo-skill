@@ -30,15 +30,25 @@ class FsError(Exception):
         self.path = str(path) if path is not None else None
 
 
-def now_iso() -> str:
-    """带时区的 ISO-8601 秒级时间。
+def now() -> datetime:
+    """当前时间；`NEO_SKILL_NOW` 的合法 ISO 值可覆盖，非法值退回真实时间。
 
-    `NEO_SKILL_NOW` 可覆盖当前时间，便于测试得到可预测记录。
+    无时区的覆盖值按本地时区解释，与 `datetime.now().astimezone()` 的口径一致。
     """
-    override = os.environ.get("NEO_SKILL_NOW")
+    override = os.environ.get("NEO_SKILL_NOW", "").strip()
     if override:
-        return override.strip()
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+        try:
+            parsed = datetime.fromisoformat(override)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return parsed if parsed.tzinfo else parsed.astimezone()
+    return datetime.now().astimezone()
+
+
+def now_iso() -> str:
+    """带时区的 ISO-8601 秒级时间；`NEO_SKILL_NOW` 可覆盖当前时间。"""
+    return now().isoformat(timespec="seconds")
 
 
 def read_text(path: Path) -> str:

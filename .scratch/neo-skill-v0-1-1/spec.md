@@ -102,3 +102,34 @@ Neo Skill 当前把 P0 产品阶段能力集中在一组阶段 Skill 中，缺�
 - The progress report must say what it knows, what it inferred only from explicitly labeled remote sources, and what it could not verify.
 - The local Git reminder is intentionally not a second progress calculation. A dirty or ahead local checkout may explain why local work is absent upstream, but it cannot prove that upstream work is complete.
 - This spec is ready for an implementation agent. Implementation should be split into narrow tickets, with documentation/routing and installer changes kept separate from remote-query behavior where practical.
+
+## 实现结果
+
+四个 ticket 已全部实现并合并到集成分支 `feat/v0-1-1-composable-skills`（HEAD `f7863ea`，起点 `bc422c5`）。
+
+- **交付**：`flow-core` 新增两个命令组——
+  `upstream`（`bind` / `show` / `status`：把上游 URL 与远端进度来源写进 `AGENTS.md`
+  或 `README.md` 的独立受管理区块 `<!-- neo-skill:upstream:begin/end -->`，区块内是纯 YAML；
+  写入前要 `--actor` + `--confirm`，冲突要 `--force` 才覆盖，区块外内容一个字节不动）与
+  `progress`（`report`：只读，从绑定或本次临时参数定位远端，产出
+  `published` / `ongoing` / `sources` / `uncertainty` / `local_reminders` 五分类报告，
+  本地 Git 只作单列的「本地提醒」，绝不并入远端结论，临时查询不写回任何文档）。
+  新增 Skill `upstream-progress`（`skills/upstream-progress/SKILL.md`），共 7 个 Skill；
+  `07-skill-catalog.md` 把它们分成「入口/编排」与「可复用基础」两层并写清边界与示例名免责声明。
+  `__version__` → `0.1.1`。
+- **测试**：全仓 **592 个用例**，全部黑盒（进程边界 / 磁盘断言）。本轮新增
+  `test_11_upstream.py`（18）、`test_11_progress.py`（22）、`test_12_docs.py`（13），
+  并扩展 `test_10_install.py`、`test_10_dist.py`、`test_01_cli.py`、`test_09_ci.py`。
+  远端证据用 `file://` 夹具与本地 `http.server`，本地通道用隔离 `git init` 仓库，
+  不依赖真实上游服务或账号。
+- **安装发现**：`install-sim.sh` 从 `skills/` **自动派生** Skill 集合（不再有手写全量清单），
+  校验 frontmatter、源与目标集合一致、核心必需底线；新增 `--skills-root` 供缺陷注入测试。
+  CI 的测试循环改为 `tests/test_*.py` 通配，并由 `test_09_ci.py` 反查「每个测试文件都被 CI 覆盖」。
+- **验证**：`./scripts/check.sh` 全量通过（compileall / ruff / mypy + 26 个测试文件分批
+  + install-sim + 隔离端到端 pilot）。
+- **code-review**：两轴评审（Standards / Spec）→ 一次修复（复用 `_normalize_sources` 与
+  `NEO_SKILL_NOW` 解析、绑定阶段校验来源 scheme、install-sim 名单机制）→ 二轮复核
+  （补回必需底线防源侧静默缺口、修注释口径与末尾换行）→ 三轮收尾确认。
+- **已知边界**（spec Out of Scope 内，未做）：只支持 `http` / `https` / `file` 三种来源协议，
+  不支持私有 token、分页与 `git+https`；`stale` 阈值固定 180 天且不可配；
+  `npx skills@latest add` 的远端真实安装仍以安装模拟为代理（见 `docs/pilot-report.md`）。

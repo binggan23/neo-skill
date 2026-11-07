@@ -228,7 +228,8 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 流程（**先展示，后确认，再写入**）：
 
 1. **收集**：上游 URL 或项目标识（不允从 `origin`、分支名、目录名自动推断）+ 一至多个远端进度来源
-   （`https://…` 或 `file://…`，如 releases、CHANGELOG、roadmap、issues 列表）。信息不完整时**不要编**。
+   （`https://…`、`http://…` 或 `file://…`，如 releases、CHANGELOG、roadmap、issues 列表）；
+   其他协议（`ssh://`、`git+https://` 等）只用于克隆，进度查询抓不到，`upstream bind` 会拒绝。信息不完整时**不要编**。
 2. **展示待记录内容与目标文档**：目标文档优先 `AGENTS.md`；没有时用 `README.md` 的 `## 上游进度来源` 小节；
    两者都没有时新建 `README.md`（只创建不覆盖）。告诉用户「只写一个受管理区块，其他内容不动」。
 3. **取得明确确认后**才写入：

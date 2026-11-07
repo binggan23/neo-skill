@@ -82,7 +82,8 @@ GIT_TIMEOUT = 15.0
 REPORT_HEADING = "上游进度报告"
 LOCAL_HEADING = "本地提醒（不在上游进度内）"
 
-SUPPORTED_SCHEMES = ("http", "https", "file")
+# 与 `upstream bind` 共用同一份 scheme 白名单：绑定阶段就拒绝查不了的来源。
+SUPPORTED_SCHEMES = upstream_command.SUPPORTED_SOURCE_SCHEMES
 
 _DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _CHECKBOX_RE = re.compile(r"^\s*[-*+]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.*\S)\s*$")

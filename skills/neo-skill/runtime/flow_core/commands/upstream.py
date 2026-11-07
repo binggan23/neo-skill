@@ -44,6 +44,7 @@
 from __future__ import annotations
 
 import argparse
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -58,6 +59,11 @@ HELP = "上游进度来源绑定：写入 / 展示 / 状态（只写受管理区
 FLOW_CORE = "flow-core"
 BEGIN = "<!-- neo-skill:upstream:begin -->"
 END = "<!-- neo-skill:upstream:end -->"
+
+# 来源必须是远端可抓取的 URL；`progress report` 只认这三个 scheme。
+# 这里与 `progress.SUPPORTED_SCHEMES` 同口径：绑定阶段就拒绝，而不是等到查询时才报
+# `unsupported_scheme`——否则绑定会安静地写入一个永远查不了的来源。
+SUPPORTED_SOURCE_SCHEMES = ("http", "https", "file")
 README_HEADING = "## 上游进度来源"
 
 AGENTS_DOC = "AGENTS.md"
@@ -123,7 +129,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                       help="上游 URL 或项目标识（不得从 origin/目录名自动推断）")
     bind.add_argument("--source", required=True, action="append", dest="sources",
                       metavar="SOURCE",
-                      help="远端进度来源，可重复（至少一个；https:// 或 file://）")
+                      help="远端进度来源，可重复（至少一个；https:// / http:// / file://）")
     bind.add_argument("--doc", choices=sorted(DOCS), default=None,
                       help="目标文档：agents=AGENTS.md，readme=README.md（缺省自动选择）")
     bind.add_argument("--force", action="store_true",
@@ -176,6 +182,17 @@ def _bind(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resul
             object=identifier or None,
             suggestion="补齐上游标识与至少一个远端进度来源后重试；不绑定也可以继续接入，"
                        "只是进度查询处于未配置状态",
+            next_actions=[BIND_COMMAND],
+        )
+
+    unsupported = [source for source in sources if not _is_supported_source(source)]
+    if unsupported:
+        raise FlowError(
+            "UPSTREAM_SOURCE_UNSUPPORTED",
+            "远端进度来源协议不受支持：" + "、".join(unsupported),
+            object=identifier,
+            suggestion="本版本只接受 http:// / https:// / file:// 的来源；"
+                       "其他协议（如 ssh://、git+https://）进不了进度查询，写入后也无法查询",
             next_actions=[BIND_COMMAND],
         )
 
@@ -293,6 +310,11 @@ def _normalize_sources(raw: list[str] | None) -> list[str]:
         if value and value not in seen:
             seen.append(value)
     return seen
+
+
+def _is_supported_source(source: str) -> bool:
+    """来源的 scheme 必须是进度查询真能抓的那几个。"""
+    return urllib.parse.urlsplit(source).scheme.lower() in SUPPORTED_SOURCE_SCHEMES
 
 
 def _scan(workspace: Workspace) -> Located:

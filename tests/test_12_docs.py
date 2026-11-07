@@ -330,3 +330,39 @@ def test_写入边界指针检查会抓住复制的规则(tmp_path: Path) -> Non
     assert "installer-owned inputs" in copied
     assert "docs/agents/write-boundaries.md" not in copied
     # 两条断言各自都会失败，所以上一条测试不是装饰
+
+
+# --------------------------------------------------------------------------
+# Skill 声称「词汇以 GLOSSARY 为准」，那它列的每个词都必须真的被定义
+# --------------------------------------------------------------------------
+GLOSSARY = REPO_ROOT / "GLOSSARY.md"
+GLOSSARY_REF_RE = re.compile(r"词汇以[^。]*`GLOSSARY\.md`[^。]*[：:]([^。]+)。")
+DEFINED_TERM_RE = re.compile(r"^\*\*([^*]+)\*\*", re.MULTILINE)
+
+
+def defined_terms() -> set[str]:
+    return set(DEFINED_TERM_RE.findall(read(GLOSSARY)))
+
+
+def test_Skill_引用的词汇都在_GLOSSARY_里有定义():
+    """引用一个不存在的词，读者就会自己发明含义——本仓库真实发生过：
+    `upstream-progress` 引用「未配置完成」，而 GLOSSARY 里没有这个词。"""
+    defined = defined_terms()
+    assert defined, "GLOSSARY 里一个词都没解析出来"
+    offenders = []
+    for skill in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        match = GLOSSARY_REF_RE.search(read(skill))
+        if not match:
+            continue
+        terms = [item.strip() for item in re.split(r"[、,，]", match.group(1)) if item.strip()]
+        missing = [term for term in terms if term not in defined]
+        if missing:
+            offenders.append(f"{skill.parent.name}: {missing}")
+    assert offenders == [], "这些 Skill 引用了 GLOSSARY 里不存在的词：\n" + "\n".join(offenders)
+
+
+def test_v0_1_1_的新概念都在_GLOSSARY_里():
+    """上游概念簇是 v0.1.1 的交付物，词汇表漏掉它等于没有共同语言。"""
+    terms = defined_terms()
+    for term in ("上游", "上游绑定", "远端进度来源", "本地提醒", "未配置完成"):
+        assert term in terms, f"GLOSSARY 缺 v0.1.1 概念：{term}"

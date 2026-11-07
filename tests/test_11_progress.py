@@ -501,3 +501,64 @@ def test_绑定区块坏了时报_binding_invalid_而不是_query_input_required
     assert result.code == 1, result
     assert result.error_codes() == ["UPSTREAM_BINDING_INVALID"]
     assert any("--upstream" in item for item in result.json["next_actions"])
+
+
+# --------------------------------------------------------------------------
+# 页面渲染数据 ≠ 进度资料（真实踩到：GitHub releases 页面返回 React payload）
+# --------------------------------------------------------------------------
+GITHUB_PAGE_PAYLOAD = '{"payload":{"releasesIndexRoute":{"repository":{"id":1,"name":"x"}},"title":"Releases"}}'
+HTML_PAGE = '<!DOCTYPE html>\n<html lang="en"><head><title>Releases</title></head><body>x</body></html>\n'
+
+
+def test_页面渲染_JSON_报_unparsable_而不是_incomplete(tmp_path: Path) -> None:
+    """合法 JSON 但结构是站点页面 payload：这是「看不懂」，不是「文档是空的」。
+
+    报成 incomplete 会让用户看到「json 文档：识别 0 条」这种像成功的 OK 态。
+    """
+    page = fixture(tmp_path, "page.json", GITHUB_PAGE_PAYLOAD)
+    roadmap = fixture(tmp_path, "roadmap.md", ROADMAP_MD)
+
+    result = report_for(tmp_path, page, roadmap)
+
+    assert result.code == 0, result
+    entry = next(item for item in result.json["data"]["uncertainty"] if item["source"] == page)
+    assert entry["reason"] == "unparsable", entry
+    # 报错要能直接照做：给出同一站点的数据接口
+    assert "api.github.com/repos/example/upstream/releases" in entry["detail"], entry
+    # 其他来源照常出结论，不因这一条整体失败
+    assert "批量导出" in summary_list(result.json["data"]["ongoing"])
+
+
+def test_HTML_页面报_unparsable_并给出数据接口建议(tmp_path: Path) -> None:
+    page = fixture(tmp_path, "page.html", HTML_PAGE)
+
+    result = report_for(tmp_path, page)
+
+    assert result.code == 0, result
+    entry = result.json["data"]["uncertainty"][0]
+    assert entry["reason"] == "unparsable", entry
+    assert "页面渲染数据" in entry["detail"]
+    assert "api.github.com" in entry["detail"]
+
+
+def test_真正空的_JSON_仍是_incomplete(tmp_path: Path) -> None:
+    """合法 JSON、结构是普通映射、确实没有条目 → 保持 incomplete，别被上面两条误伤。"""
+    empty = fixture(tmp_path, "empty.json", json.dumps({"meta": {"count": 0}}))
+
+    result = report_for(tmp_path, empty)
+
+    assert result.code == 0, result
+    assert "incomplete" in reasons(result.json["data"])
+    assert "unparsable" not in reasons(result.json["data"])
+
+
+def test_非_GitHub_页面给通用建议而不是瞎编接口(tmp_path: Path) -> None:
+    page = fixture(tmp_path, "blog.html", HTML_PAGE)
+
+    result = report_for(tmp_path, page, identifier="https://example.com/changelog")
+
+    assert result.code == 0, result
+    entry = result.json["data"]["uncertainty"][0]
+    assert entry["reason"] == "unparsable"
+    assert "api.github.com" not in entry["detail"], "不能给不属于该站点的地址"
+    assert "数据接口" in entry["detail"]

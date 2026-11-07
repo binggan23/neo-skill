@@ -141,7 +141,9 @@ def run(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
 def _report(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     identifier, sources, origin = _resolve_inputs(workspace, args)
 
-    inspected = [_inspect(url) for url in sources]
+    # 上游标识也参与「该给哪个数据接口」的推断：来源本身可能是 file://（本地导出/夹具），
+    # 真正能指出站点的是绑定里的上游 URL。
+    inspected = [_inspect(url, identifier=identifier) for url in sources]
     entries, uncertainty = _classify(inspected)
 
     # 本地通道：只读 Git 元数据，永远不参与上面两个桶的判定。
@@ -244,7 +246,7 @@ class Inspected:
     latest_date: date | None = None
 
 
-def _inspect(url: str) -> Inspected:
+def _inspect(url: str, *, identifier: str = "") -> Inspected:
     """抓一个来源并解析；任何失败都落成 `problems`，绝不抛异常出去。"""
     result = Inspected(url=url)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
@@ -267,7 +269,7 @@ def _inspect(url: str) -> Inspected:
     result.text = text
     result.latest_date = _latest_date(text)
 
-    parsed, kind, parse_failure = _parse(text)
+    parsed, kind, parse_failure = _parse(text, url, identifier=identifier)
     result.kind = kind
     if parse_failure is not None:
         reason, detail = parse_failure
@@ -280,8 +282,11 @@ def _inspect(url: str) -> Inspected:
     ongoing = sum(1 for item in result.entries if item.bucket == ONGOING)
     result.summary = f"{kind} 文档：识别 {len(result.entries)} 条（已发布 {published}、进行中 {ongoing}）"
     if not result.entries:
+        # 走到这里说明文档格式合法但内容为空；「像页面 payload」已在 `_parse` 里被
+        # 分成 unsupported 形状并给出了替代来源，不会混进这个分支。
         result.problems.append(Problem(
-            url, "incomplete", "文档可解析，但没有识别出任何版本/待办条目"))
+            url, "incomplete",
+            f"文档可解析但是没有识别出任何版本/待办条目（{kind}）；确认它是不是进度资料本身"))
     return result
 
 
@@ -328,16 +333,68 @@ def _read_http(url: str) -> tuple[bytes, tuple[str, str] | None]:
     return raw, None
 
 
-def _parse(text: str) -> tuple[list[tuple[str, str]], str | None, tuple[str, str] | None]:
-    """先按 JSON 试，再按 Markdown 试；两族都认不出来才算解析失败。"""
+# shortcut: 页面渲染 payload 只按「已知路由/渲染键」识别，不是完整的站点适配。
+# ceiling: 站点把进度塞进全新形状的 payload 时仍会被误判为 incomplete；
+# upgrade: 出现第二种被真实使用的站点形状时，改成正则化的 source adapter 并各自带夹具。
+_PAGE_PAYLOAD_KEYS = frozenset({
+    "payload", "props", "pageProps", "__NEXT_DATA__", "apolloState", "initialState",
+    "dehydratedState", "releaseIndexRoute", "releasesIndexRoute", "routeData",
+})
+
+
+def _parse(text: str, url: str, *, identifier: str = "") -> tuple[list[tuple[str, str]], str | None, tuple[str, str] | None]:
+    """先按 JSON 试，再按 Markdown 试；两族都认不出来才算解析失败。
+
+    「解析成功但一条都没识别出来」必须分清两种：文档确实是空的（`incomplete`），
+    还是拿到的是页面渲染数据、根本不是进度资料（`unparsable` + 可执行的替代建议）。
+    后者报成前者，用户会看到「json 文档：识别 0 条」这种像成功的 OK 态。
+    """
     payload, json_error = _try_json(text)
     if json_error is None:
         entries = _entries_from_json(payload)
-        return entries, "json", None
+        if entries:
+            return entries, "json", None
+        hint = _page_payload_hint(url, identifier=identifier, payload=payload)
+        if hint:
+            return [], None, ("unparsable", f"{url} 返回的是页面渲染数据，不是进度资料；{hint}")
+        return [], "json", None  # 合法 JSON、确实没有条目 → 由调用方记为 incomplete
     entries = _entries_from_markdown(text)
     if entries or _looks_like_markdown(text):
         return entries, "markdown", None
+    hint = _page_payload_hint(url, identifier=identifier, text=text)
+    if hint:
+        return [], None, ("unparsable", f"{url} 返回的是页面渲染数据，不是进度资料；{hint}")
     return [], None, ("unparsable", f"既不是 JSON 列表也不是带标题/勾选项的 Markdown（{json_error}）")
+
+
+def _page_payload_hint(url: str, *, identifier: str = "", payload: Any = None,
+                       text: str = "") -> str | None:
+    """内容像页面渲染数据时给出替代来源建议；不像就返回 None（交回 incomplete）。
+
+    站点优先从来源 URL 推；来源是 file:// 之类带不出站点时退回上游标识。
+    """
+    looks_payload = isinstance(payload, dict) and bool(_PAGE_PAYLOAD_KEYS & set(payload))
+    head = text.lstrip()[:400].lower()
+    looks_html = text.lstrip().startswith("<!DOCTYPE") or "<html" in head
+    if not (looks_payload or looks_html):
+        return None
+    return _api_source_hint(url) or _api_source_hint(identifier) or _generic_source_hint(url)
+
+
+def _api_source_hint(url: str) -> str | None:
+    """GitHub 仓库页 → 同仓库的数据接口；不是 GitHub 仓库页就返回 None。"""
+    parts = urllib.parse.urlsplit(url)
+    segments = [item for item in parts.path.split("/") if item]
+    if parts.netloc.lower().endswith("github.com") and len(segments) >= 2:
+        owner, repo = segments[0], segments[1]
+        return (f"改用 https://api.github.com/repos/{owner}/{repo}/releases"
+                f" 或 https://api.github.com/repos/{owner}/{repo}/issues?state=all")
+    return None
+
+
+def _generic_source_hint(url: str) -> str:
+    return (f"{url} 返回的是页面渲染数据，不是进度资料；"
+            "改用该站点的数据接口（返回 JSON 的 API）或纯文本 CHANGELOG / roadmap 链接")
 
 
 def _try_json(text: str) -> tuple[Any, str | None]:

@@ -369,3 +369,89 @@ python3 -m pytest tests/test_10_pilot.py
    提示词改到选项前面（脚本内已注释）。
 4. **`--prune` 之后重跑 `init` 不会重建被跳过的目录组**（幂等语义，符合预期）。
    已在 `skills/project/SKILL.md` 的裁剪决策一节写明这个后果，避免用户以为能自动补回。
+
+---
+
+## 11. v0.1.1 复验（2026-11-07）
+
+本轮合并（PR #3，`main` = `1ca9846`）后重跑了此前无法执行的那一条，并顺手用**真实上游**验证了
+新增的进度查询能力。**本节只追加，不改前文的任何数字与结论**（前文是 `flow-core 0.1.0`
+那次的真实记录）。
+
+### 11.1 远端标准安装：阻塞解除
+
+前文「已知阻塞」的条件是「`main` 没有 `skills/` 目录」。v0.1.1 合并后该条件已不成立，实测：
+
+```
+$ mkdir /tmp/npxcheck && cd /tmp/npxcheck
+$ npx -y skills@latest add binggan23/neo-skill
+  ✓ ./.agents/skills/acceptance      ✓ ./.agents/skills/dev
+  ✓ ./.agents/skills/neo-skill       ✓ ./.agents/skills/prd
+  ✓ ./.agents/skills/project         ✓ ./.agents/skills/requirements
+  ✓ ./.agents/skills/upstream-progress
+```
+
+装完即验（未设 `NEO_SKILL_HOME` / `PYTHONPATH`，只靠相对位置）：
+
+```
+$ python3 .agents/skills/neo-skill/runtime/flow-core --version
+flow-core 0.1.1
+$ ls .agents/skills/neo-skill/runtime/
+flow_core/  rules/  templates/  flow-core
+$ python3 .agents/skills/neo-skill/runtime/flow-core progress --help
+（新命令组在安装布局里可用）
+```
+
+**结论**：远端 `npx skills@latest add` 已可安装 7 个 Skill，`runtime/` 随包分发，
+安装后不依赖源码仓库路径。前文那条阻塞可以认为已解除；前文保留作为历史。
+
+### 11.2 上游进度查询：用真实上游跑通
+
+在装好的项目里真实跑了一遍（上游取 `mattpocock/skills`，v0.1.1 spec 里引用的设计对照来源）：
+
+```
+$ flow-core upstream bind --id https://github.com/mattpocock/skills \
+    --source https://api.github.com/repos/mattpocock/skills/releases --actor alice --confirm
+OK: upstream.bind 完成（更新 1 项）
+  上游绑定已写入 AGENTS.md 的受管理区块，区块外内容未改动
+
+$ flow-core progress report
+已发布/已完成（远端事实）：
+  - v1.3.2  - v1.3.1  - v1.3.0  - v1.2.3  - v1.2.2
+  - v1.2.0  - v1.1.0  - v1.0.1  - v1.0.0   ← 均标注来源
+进行中/开放（远端事实）：
+  - Make architecture skill dependency loading runtime-neutral
+  - teach: make quiz options clear and feedback question-specific
+  - Move skill instructions from description to body
+来源：      - [可访问] …/releases（json）识别 9 条
+不确定性：无
+本地提醒（不在上游进度内）：
+  - [dirty] …（本地状态，不代表上游进度）
+```
+
+### 11.3 同一次复验发现并临时修复的问题
+
+复验时把「用户最可能填的那种 URL」——GitHub 的 **releases 页面**——交给查询，暴露一个真实缺口：
+
+```
+$ flow-core progress report     # 绑定 .../skills/releases（页面 URL）
+已发布/已完成（远端事实）：无
+  - [可访问] .../releases（json）json 文档：识别 0 条
+不确定性：- [incomplete] …没有识别出任何版本/待办条目
+```
+
+GitHub 对 `Accept: application/json` 返回的是 **React 页面 payload**
+（`{"payload":{"releasesIndexRoute":…}}`），旧实现把它当合法 JSON 解析、0 条命中，于是报了
+`incomplete`——一个看起来像成功的 OK 态。用户拿到的信息是「文档可解析、只是没条目」，
+而真相是「这不是进度资料」。
+
+临时修复（`shortcut:` 标注，upgrade 路径写在同一处）：
+
+- 页面渲染数据（React/Next 类 payload、HTML 文档）改报 `unparsable`，并在 `detail` 里
+  给出**可直接照做**的替代来源（GitHub 仓库页 → `api.github.com/repos/<owner>/<repo>/releases`）；
+- 来源是 `file://` 等带不出站点时，退回用绑定里的上游标识推断站点；
+- 真正空的合法 JSON 仍是 `incomplete`（不误伤）。
+
+已知边界：识别依据是「已知的页面 payload 键 + `<!DOCTYPE`/`<html`」，不是完整的站点适配；
+出现第二种被真实使用的站点形状时需改成 source adapter。这一条与「只支持三种 scheme、
+`stale` 阈值固定 180 天」同属 spec 的 Out of Scope。

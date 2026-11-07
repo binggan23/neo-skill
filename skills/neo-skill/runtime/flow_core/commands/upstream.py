@@ -60,8 +60,8 @@ FLOW_CORE = "flow-core"
 BEGIN = "<!-- neo-skill:upstream:begin -->"
 END = "<!-- neo-skill:upstream:end -->"
 
-# 来源必须是远端可抓取的 URL；`progress report` 只认这三个 scheme。
-# 这里与 `progress.SUPPORTED_SCHEMES` 同口径：绑定阶段就拒绝，而不是等到查询时才报
+# 来源必须是远端可抓取的 URL。这是**唯一一份** scheme 白名单：`progress.SUPPORTED_SCHEMES`
+# 反过来引用这里，所以两边的口径永远一致。绑定阶段就拒绝，而不是等到查询时才报
 # `unsupported_scheme`——否则绑定会安静地写入一个永远查不了的来源。
 SUPPORTED_SOURCE_SCHEMES = ("http", "https", "file")
 README_HEADING = "## 上游进度来源"

@@ -24,6 +24,12 @@ INTO=".claude/skills"
 VERIFY_ONLY=0
 SKILLS_ROOT="$REPO_ROOT/skills"
 
+# 必需 Skill 的底线集合：安装模拟必须看到这些名字，少一个就非零退出。
+# 它**不是**完整清单（完整清单从 skills 根目录自动派生，新增 Skill 无需改这里），
+# 只用来堵住「仓库里某个核心 Skill 目录被删掉/改名，而源与目标恰好一起变空」这种
+# 两边都一致、却真的少了能力的静默缺口。删除/改名核心 Skill 时同步本行与 catalog 第 6 步。
+REQUIRED_SKILLS="neo-skill project requirements prd dev acceptance upstream-progress"
+
 usage() {
   awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
 }
@@ -106,7 +112,17 @@ fi
 echo "安装目标：$SKILLS_DIR"
 echo "skills 源：$SKILLS_ROOT"
 
-echo "--- 0. Skill 集合一致性（源与目标必须相同，否则非零退出）---"
+echo "--- 0. 必需 Skill 底线（核心集合少一个就非零退出）---"
+for name in $REQUIRED_SKILLS; do
+  if printf '%s\n' "$DISCOVERED" | grep -qx "$name"; then
+    echo "OK-REQUIRED $name"
+  else
+    echo "MISSING-REQUIRED $name（skills 源里没有这个核心 Skill 目录，安装会静默少一项能力）"
+    status=1
+  fi
+done
+
+echo "--- 0b. Skill 集合一致性（源与目标必须相同，否则非零退出）---"
 INSTALLED="$(discover_skills "$SKILLS_DIR")"
 for name in $DISCOVERED; do
   if ! printf '%s\n' "$INSTALLED" | grep -qx "$name"; then

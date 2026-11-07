@@ -149,6 +149,19 @@ def test_install_进度_skill_被安装且有有效_frontmatter(tmp_path: Path) 
     assert "upstream-progress" not in STAGE_SKILLS
 
 
+def test_install_源里缺核心_skill_时非零退出(tmp_path: Path) -> None:
+    """源目录里直接少一个核心 Skill：源与目标会「一致地」都少它，
+    光靠集合一致性检查抓不到，必须由必需底线报 MISSING-REQUIRED 并非零退出。"""
+    root = _fake_skills_root(tmp_path, drop="upstream-progress")
+    assert not (root / "upstream-progress").exists()
+
+    proc = _install(tmp_path / "proj", "--skills-root", str(root))
+
+    assert proc.returncode != 0, f"源里缺核心 Skill 却仍返回 0：\n{proc.stdout}"
+    assert "MISSING-REQUIRED upstream-progress" in proc.stdout, proc.stdout
+    assert "INSTALL-SIM FAILED" in proc.stdout + proc.stderr
+
+
 def test_install_目标_skill_集合与源集合不一致时非零退出(tmp_path: Path) -> None:
     """安装后故意删掉一个 Skill：与 --skills-root 派生的集合不一致，必须非零退出。"""
     root = _fake_skills_root(tmp_path)

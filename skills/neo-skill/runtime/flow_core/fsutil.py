@@ -30,15 +30,25 @@ class FsError(Exception):
         self.path = str(path) if path is not None else None
 
 
-def now_iso() -> str:
-    """带时区的 ISO-8601 秒级时间。
+def now() -> datetime:
+    """当前时间；`NEO_SKILL_NOW` 的合法 ISO 值可覆盖，非法值退回真实时间。
 
-    `NEO_SKILL_NOW` 可覆盖当前时间，便于测试得到可预测记录。
+    无时区的覆盖值按本地时区解释，与 `datetime.now().astimezone()` 的口径一致。
     """
-    override = os.environ.get("NEO_SKILL_NOW")
+    override = os.environ.get("NEO_SKILL_NOW", "").strip()
     if override:
-        return override.strip()
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+        try:
+            parsed = datetime.fromisoformat(override)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return parsed if parsed.tzinfo else parsed.astimezone()
+    return datetime.now().astimezone()
+
+
+def now_iso() -> str:
+    """带时区的 ISO-8601 秒级时间；`NEO_SKILL_NOW` 可覆盖当前时间。"""
+    return now().isoformat(timespec="seconds")
 
 
 def read_text(path: Path) -> str:
@@ -90,6 +100,17 @@ def read_yaml(path: Path) -> Any:
         return yaml.safe_load(read_text(path))
     except yaml.YAMLError as exc:  # pragma: no cover - 防御
         raise FsError(f"YAML 解析失败：{exc}", path) from exc
+
+
+def parse_yaml_text(text: str) -> Any:
+    """解析一段内嵌 YAML（如文档里的受管理区块 body）；非法 → `FsError`。
+
+    与 `read_yaml` 的区别只在不落盘：调用方需要从 Markdown 区块里解析结构化内容。
+    """
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise FsError(f"YAML 解析失败：{exc}") from exc
 
 
 def load_yaml(path: Path, default: Any = None) -> Any:

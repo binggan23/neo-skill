@@ -38,14 +38,19 @@ codegraph_status      索引状态与新鲜度
 ## 本仓库的结构性陷阱：worktree 没有索引
 
 `git worktree add` 出来的目录**不带 `.codegraph/`**（数据库是本机产物，被
-`.codegraph/.gitignore` 忽略），而且从 worktree 向上找不到主仓库的索引 ——
-worktree 在 `../<repo>-worktrees/NN`，主仓库在别处，不在同一路径链上。
+`.codegraph/.gitignore` 忽略），从 worktree 向上也找不到主仓库的索引 —— 主仓库与
+worktree 目录不在同一路径链上（worktree 位置不固定，别假设 `../<repo>-worktrees/NN`）。
 
 后果：在 worktree 里工作的 agent，`codegraph_status` 一律返回 not indexed，
 MCP 还会要求「本会话别再调 codegraph」—— 于是结构性地用不上 CodeGraph。
 
 **做法**：每个新 worktree 建好后，在 worktree 根目录跑一次 `codegraph init`
 （实测 443ms / 60 文件 / 2046 节点）。派子 agent 前由主线程先做这一步。
+
+**这条不能自动生效**：没有脚本、也没有测试会提醒你漏了。所以它只对真会做结构查询的
+agent 兑现——纯文档/Skill 散文的工单用 `rg` / `read` 就够，不必为它建索引；
+一旦这个 worktree 的任务是「找实现落点 / 算改动半径」，漏建索引就得在报告里说明
+为什么结构查询没跑。
 
 ## 子 agent
 

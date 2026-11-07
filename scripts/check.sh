@@ -11,6 +11,9 @@
 # 为什么分批：单个测试文件就要几十秒到一分半（每个用例都起 CLI 子进程），
 # 一条 `pytest tests/` 要 6-10 分钟。分批能立刻看到哪一批坏了，
 # 也避免把整应用/大夹具一次挂进内存（AGENTS.md「测试与内存」）。
+#
+# 「本地绿等于 CI 绿」的意思是：缺 ruff / mypy 也算**失败**，不算通过。
+# 之前缺工具打一行 SKIP 然后退出 0，曾让两个 ticket 带着 mypy 报错通过本脚本。
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -38,7 +41,8 @@ if [ "$RUN_STATIC" = 1 ]; then
     bad "compileall"
   fi
 
-  step "ruff（未用导入/变量、盲 except、bugbear）"
+  step "ruff（未用导入/变量、盲 except、bugbear、行尾/文件末尾空白）"
+  # 缺工具 = 检查没做，不能算通过：CI 装了 ruff 与 mypy，本地「绿」必须与 CI 同义。
   if command -v ruff >/dev/null 2>&1; then
     if ruff check skills/neo-skill/runtime tests; then
       ok "ruff"
@@ -46,7 +50,7 @@ if [ "$RUN_STATIC" = 1 ]; then
       bad "ruff"
     fi
   else
-    printf '  \033[33mSKIP\033[0m ruff 未安装（pip install ruff）\n'
+    bad "ruff 未安装（pip install ruff；缺工具等于没做检查，不算通过）"
   fi
 
   step "mypy（类型检查）"
@@ -63,7 +67,7 @@ if [ "$RUN_STATIC" = 1 ]; then
       bad "mypy"
     fi
   else
-    printf '  \033[33mSKIP\033[0m mypy 未安装（pip install mypy）\n'
+    bad "mypy 未安装（pip install mypy；缺工具等于没做检查，不算通过）"
   fi
 fi
 

@@ -31,8 +31,10 @@ from .commands import index_cmd as index_command
 from .commands import init as init_command
 from .commands import lint_cmd as lint_command
 from .commands import prd as prd_command
+from .commands import progress as progress_command
 from .commands import recover as recover_command
 from .commands import req as req_command
+from .commands import upstream as upstream_command
 from .output import EXIT_FAIL, EXIT_OK, EXIT_USAGE, FlowError, Result, render_human
 from .rules import load_rules
 from .workspace import Workspace, resolve_root
@@ -48,6 +50,8 @@ COMMAND_MODULES = (
     index_command,
     recover_command,
     lint_command,
+    upstream_command,
+    progress_command,
 )
 
 PROG = "flow-core"

@@ -63,10 +63,10 @@ AI 查事实，人决定产品取舍。先收敛 frontier，再形成 spec 和�
 
 - 把任务分成有完成标准的切片，必要时用 spec + tickets 形成任务图；每个 implementer 独立 worktree，先建 CodeGraph 索引。探索约定见 [codegraph.md](../codegraph.md)。
 - 同一 ticket/worktree 同时只有一个写入者；不能靠“没有新 commit”推断 agent 已停止。重启前确认终止、检查脏文件并保留有用产出。
-- 静态检查与测试入口是 [`scripts/check.sh`](../../../scripts/check.sh)；CI 见 [ci.yml](../../../.github/workflows/ci.yml)。注意缺工具时本地脚本可能 SKIP，退出 0 不能证明缺席的检查已运行。
+- 静态检查与测试入口是 [`scripts/check.sh`](../../../scripts/check.sh)；CI 见 [ci.yml](../../../.github/workflows/ci.yml)。缺 ruff / mypy 现在是**失败**而非跳过（缺工具等于没做检查），所以本地退出 0 与 CI 同义。
 - 测试通过 CLI 边界验证行为；规模夹具的内部构造需由一致性测试约束。先跑相关文件，改动未变化且已绿时不反复全量重跑。
 - 安装与发布验证包括 [`install-sim.sh`](../../../scripts/install-sim.sh)、[`pilot.sh`](../../../scripts/pilot.sh)。二者验证资源/确定性主链；外部 Claude 调用另行记录，不把排除/跳过写成通过。
-- 使用 code-review 做 Standards/Spec 复核；有可执行 finding 派 fix，按根 [AGENTS.md](../../../AGENTS.md) 的轮次和升级约定处理。fix 的实际文件限制见 [定义](../../../.agents/agents/fix.md)，它限制 `skills/**`；runtime 也在该路径下，遇到冲突应指出并处理授权，不能擅自改写限制。
+- 使用 code-review 做 Standards/Spec 复核；有可执行 finding 派 fix，按根 [AGENTS.md](../../../AGENTS.md) 的轮次和升级约定处理。fix 能改哪些路径以 [写入边界](../write-boundaries.md) 为准（那份文件是唯一事实来源，`.agents/agents/fix.md` 只留指针）；规则本身有问题时提出授权，不要自己改规则。
 - ticket 状态与代码合入是两项交付。本仓库 issue 记在本地 Markdown（见 [tracker](../issue-tracker.md)）；代码变更先建立可审查分支/PR，列出证据，再按授权合并推送。事后 PR 只能留记录，不能替代合并前审查。
 
 ## 完成标准与维护

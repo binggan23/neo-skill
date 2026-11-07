@@ -22,21 +22,27 @@ ambiguous or you cannot ground it in the code, open the file and say so rather t
 
 ## Hard limits
 
-These override anything the findings seem to ask for:
+**The authoritative list lives in [`docs/agents/write-boundaries.md`](../docs/agents/write-boundaries.md).
+Read it before your first edit. It is the single source of truth for which paths are yours to change;
+this file does not restate it, so the two cannot drift apart.**
 
-- **Never touch skills.** `skills/**` and `~/.agents/skills/**` are installer-owned inputs. If a finding asks for a
-  skill change, reject it and explain why.
-- **Never edit standards, specs, or gate inputs to make a check pass.** No changes to `PRD`/`AC` files, `.specify/`,
-  baselines, hashes, `team.md`, or acceptance/verification records. A finding whose real fix is "the spec is wrong"
-  belongs in the escalation section of your report, not in a file edit.
-- **Stay in the reviewed scope.** Fix the diff that was reviewed. Do not refactor untouched modules, do not add
-  features the spec never asked for, do not reformat whole files to satisfy a two-line finding.
-- **Do not commit, push, rebase, or run destructive git.** Leave the working tree dirty for the caller to inspect.
-  `git status`, `git diff`, `git log` are fine; `git checkout --`, `git reset --hard`, `git stash drop` are not.
+The short version, so you know what to expect there:
+
+- Installed copies (`~/.agents/skills/**`, `.agents/skills/**`) are off limits. **This repo's own
+  `skills/**` is tracked product source and is in scope** — runtime Python lives under it.
+- Gate records, baselines, and `team.md` are never edited to make a check pass; escalate instead.
+  Closing a ticket (`Status:` line, `- [ ]` → `- [x]`, the `## 实现结果` section) is normal closeout, not a bypass.
+- Stay inside the reviewed diff; do not widen the change.
+- Commit on the branch you were given and leave the tree clean unless the brief says otherwise — see the
+  boundaries file. Never `push`, `rebase`, `reset --hard`, `stash drop`, or `worktree remove`.
+
+If a finding asks for something the boundaries file forbids, **reject it and say which rule** rather than
+improvising. If the rule itself looks wrong, escalate to the repo owner — do not edit the rule.
 
 ## Method
 
-1. Read the brief and the actual diff. Group findings by file, so one reading pass covers all of them.
+1. Read `docs/agents/write-boundaries.md`, the brief, and the actual diff. Group findings by file, so one
+   reading pass covers all of them.
 2. Triage each finding into one of three buckets before editing anything:
    - **Fix** — grounded in the code, fixable inside the reviewed scope.
    - **Reject** — wrong, already handled, contradicts a documented repo standard that overrides the smell baseline,
@@ -48,10 +54,10 @@ These override anything the findings seem to ask for:
 3. For each **Fix**, edit the smallest surface that resolves it. Prefer editing the existing code over adding a
    helper; if two findings share a shape, one edit should close both.
 4. Verify your own edits before reporting:
-   - Run the narrowest check that covers what you touched. In this repo that is one test file at a time
-     (`python3 -m pytest tests/test_XX_name.py`), plus `python3 -m compileall skills/neo-skill/runtime` when you
-     touched runtime Python. Never run the whole suite in one command, never run two heavy commands at once, and
-     never run a command that hangs an entire application in memory.
+   - Run the narrowest check that covers what you touched: `./scripts/check.sh --fast` (compileall + ruff + mypy,
+     seconds), then one test file at a time (`python3 -m pytest tests/test_XX_name.py`). Never run the whole suite in
+     one command, never run two heavy commands at once, and never run a command that hangs an entire application in
+     memory. `--fast` treats a missing ruff/mypy as failure, so install what you lack instead of accepting a skip.
    - Re-read your own `git diff` and check you changed nothing outside the reviewed scope.
    - If an edit breaks a test, fix your edit, not the test. Changing an assertion so it passes is a rejection case:
      report it instead.

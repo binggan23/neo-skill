@@ -1,6 +1,6 @@
 # 流程图索引与维护
 
-阅读条件：人想看流程图，或 AI 需要维护/重建图件。AI 理解流程优先读 [阶段流程](02-stage-flow.md)、[完整状态表](03-state-and-decisions.md) 和 [恢复说明](04-baseline-and-recovery.md)。四张图只把四个阶段 Skill 画成节点；`project` 与 `neo-skill` 的覆盖说明见 [Skill 注册表](07-skill-catalog.md#图中的-skill-覆盖范围)。
+阅读条件：人想看流程图，或 AI 需要维护/重建图件。AI 理解流程优先读 [阶段流程](02-stage-flow.md)、[完整状态表](03-state-and-decisions.md) 和 [恢复说明](04-baseline-and-recovery.md)。四张图只把四个阶段 Skill 画成节点；`project`、`neo-skill` 与 `upstream-progress` 的覆盖说明见 [Skill 注册表](07-skill-catalog.md#图中的-skill-覆盖范围)。
 
 ## 四张图（源在仓库，HTML 本地重建）
 

@@ -20,17 +20,11 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 探索（文件地图、实现落点、调用链与影响面、外部一手资料）**派 subagent 去读**（`Explore` 类型，见
 `.pi/subagents-lite.json`），主线程接着干活；产物写成 Markdown 笔记放在**仓库外**，后续 agent 用指针复用。
 
-**代码定位走 CodeGraph**：`codegraph_explore`（宽问题）→ `codegraph_search`（按名找）→
-`codegraph_node` / `codegraph_callers` / `codegraph_callees` → `codegraph_impact`（改动半径）。
-`rg` / `read` 兜底：字面量常量、生成代码、迁移/配置、`*.md`、索引漏掉的符号。
-
-**探索第一动作是 `codegraph_status`**，不是 `find` / `grep`。索引缺失、有变更、工具不可用
-三种分支的处理见 `docs/agents/codegraph.md`。**每个新 worktree 必须先 `codegraph init`**
-（worktree 不共享主仓库索引，这是本仓库的结构性陷阱，详见同一文件）。
-
-对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**；
-给子 agent 的 brief 里必须显式带上「先 `codegraph_status`，再探索」，否则子 agent 继承不到。
-（外部资料回到一手来源，不停在二手转述。）
+**代码定位先 `codegraph_status`，再按问题形状选 `codegraph_explore` / `search` / `node` / `impact`**；
+索引缺失、有变更、工具不可用、以及 **worktree 没有索引**四条分支的处理见
+[docs/agents/codegraph.md](docs/agents/codegraph.md)。`rg` / `read` 用于字面量常量、生成代码、`*.md`
+与索引漏掉的符号。给子 agent 的 brief 里显式带上「先 `codegraph_status`」，否则子 agent 继承不到。
+对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；skill 文件保持原样。
 
 ### code-review 之后：派 `fix` 修
 
@@ -51,11 +45,23 @@ prompt），全部 finding 一次修完，修完按同一固定点再跑一轮 `
 长时间无工具调用的 agent 会被 watchdog 杀掉。已知最常触发的场景是
 **一次读太多大文件**（例如让一个 reviewer 一次评 90 文件 / 26k 行）。
 
-给子 agent 的 brief 里固定写三条：
+给子 agent 的 brief 只写**指针 + 约束 + 报告格式**，不重述材料：
 
-1. **窄 scope**：点名它只负责哪些文件/哪些模块，其余不要看。
-2. **节奏**：每 10–15 分钟至少一次工具调用；每完成一个可测小块就提交。
-3. **别通读**：先读主线程准备好的摘要笔记，再按需查细节。
+```text
+1. 先读这两份（按顺序）：<共享笔记路径>（仓库外，口径权威）、<票/规格路径>
+2. 窄 scope：只负责 <文件/模块/条目>，其余不要看
+3. 节奏：每 10–15 分钟至少一次工具调用；每完成一个可测小块就提交
+4. 开工先确认分支基线是 <集成分支 tip>，不是就 reset 上去；完工前合回来
+5. 报告格式：<分支+commit / 改动文件 / 跑过的命令与结果 / 给下一张票的接口契约 / 遗留>
+```
+
+**共享笔记**是 brief 的主体：主线程探索一次，写成仓库外的 Markdown（仓库结构、已定口径、
+命令名与错误码），后续每个子 agent 只拿指针。brief 里不要再复制一遍笔记的内容——
+复制就是两份事实来源，改一处忘一处，而且每份 brief 都在重复付 token。
+
+唯一**必须**在 brief 里重复的，是子 agent 继承不到的东西：它看不到你的上下文，
+也看不到别的子 agent 的产出。所以「上一张票定下的接口契约」要原样贴进去，
+而不是写「见 t01 的报告」。
 
 材料多到一次读不完时，切给多个 agent，不要指望一个 agent 扛。
 

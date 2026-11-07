@@ -1,13 +1,16 @@
 ---
 name: project
-description: Neo Skill 项目阶段入口。当用户要诊断环境、初始化项目工作区、确认团队与 constitution、裁剪目录、修复初始化冲突或重跑初始化时使用。
+description: Neo Skill 项目阶段入口。当用户要诊断环境、初始化项目工作区、确认团队与 constitution、裁剪目录、修复初始化冲突或重跑初始化，或要把项目绑定到一个上游项目（记录上游 URL 与远端进度来源，供后续查询上游进度）时使用。
 ---
 
 # project：环境诊断与项目初始化
 
 本 Skill 负责把「一个空目录」变成**可排期、可开发、可验收的项目工作区**：
-诊断 → 初始化 → 团队摘要确认 → `constitution.md` 确认 → 冲突处理 → 裁剪决策 → 幂等复跑。
-它**不**负责需求、PRD、开发与验收（见 `requirements`、`prd`、`dev`、`acceptance`）。
+诊断 → 初始化 → 团队摘要确认 → `constitution.md` 确认 → 冲突处理 → 裁剪决策 → 幂等复跑
+→（可选）上游进度来源绑定。它是**入口/编排类** Skill：多步接入由它编排，
+「远端事实才是进度来源、本地提醒单列」那条可直接复用的纪律属 `upstream-progress`。
+它**不**负责需求、PRD、开发与验收（见 `requirements`、`prd`、`dev`、`acceptance`），
+也不负责查询上游进度（见 `upstream-progress`）——本 Skill 只写绑定配置，不给进度结论。
 
 词汇以项目 `GLOSSARY.md` 为准：项目基线、受管理区块、人工确认、未配置完成。
 流程规则以 `docs/srs.md` §5.1（FR-010～013）、§5.2（FR-020～025）为准。
@@ -216,6 +219,47 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 - 新增了成员/约束之后重跑 `init` **不会**回退用户内容；它只补缺失的文件与目录。
 - 复跑后建议再跑一次 `python3 <flow-core> lint` 看基线是否一致（只读，有 error 退出码 1）。
 
+## 阶段七：上游进度来源绑定（可选，SRS-FR-091 / 095）
+
+**在初始化收尾时问一句：这个项目有没有上游项目（上游仓库、产品线或项目标识）？**
+绑定只是**配置**（去哪个远端、看哪些资料），不是进度事实；绑定**不是必填项**，
+进度查询由 `upstream-progress` Skill 单独负责（只读），本阶段只负责把配置写对。
+
+流程（**先展示，后确认，再写入**）：
+
+1. **收集**：上游 URL 或项目标识（不允从 `origin`、分支名、目录名自动推断）+ 一至多个远端进度来源
+   （`https://…`、`http://…` 或 `file://…`，如 releases、CHANGELOG、roadmap、issues 列表）；
+   其他协议（`ssh://`、`git+https://` 等）只用于克隆，进度查询抓不到，`upstream bind` 会拒绝。信息不完整时**不要编**。
+2. **展示待记录内容与目标文档**：目标文档优先 `AGENTS.md`；没有时用 `README.md` 的 `## 上游进度来源` 小节；
+   两者都没有时新建 `README.md`（只创建不覆盖）。告诉用户「只写一个受管理区块，其他内容不动」。
+3. **取得明确确认后**才写入：
+
+```bash
+python3 <flow-core> upstream bind --root . \
+  --id https://github.com/example/upstream \
+  --source https://github.com/example/upstream/releases \
+  --source https://github.com/example/upstream/issues \
+  --actor <成员 id> --confirm --json
+python3 <flow-core> upstream show --root . --json     # 回显当前绑定（未配置 → 退出码 1）
+python3 <flow-core> upstream status --root . --json   # 只读：data.configured 为 false 也算成功
+```
+
+4. **确认后念一遍结果**：`data.identifier` + `data.sources` + `data.document`，让用户看到落点。
+
+| 分支 | 处理 |
+| --- | --- |
+| 用户说不绑定 / 没有上游 | **继续接入**，不改文档，明确告知「进度查询尚未配置」 |
+| 信息不完整（缺标识或来源） | 不写入；补齐后再问一轮，或按上一行继续接入 |
+| 已有不同绑定 | 返回 `UPSTREAM_BINDING_CONFLICT`，**不要**自己加 `--force`；先问哪份权威 |
+| 重复写相同内容 | 返回 `artifact.action: unchanged`，直接告诉用户无需改动 |
+| 团队未配置 | 不阻断绑定（绑定不是产品决策）；团队已配置而 `--actor` 不在名单 → `ACTOR_UNKNOWN` |
+
+**未配置上游不是失败**：接入流程照常走完。绑定缺失、拒绝或信息不完整时，
+必须**明确提示**「上游进度查询尚未配置」，并给出补绑定的确切命令；不得伪造配置，
+也不得把本地代码、业务文档或本地 roadmap 当作上游进度。
+
+`--doc agents|readme` 可强制目标文档；`--force` 只在用户明确要求替换已有绑定时加（仍只改区块）。
+
 ## 角色对照表（从 `rules/flow.yaml` 的 `gates` 读，不要硬编码）
 
 | 人工决策 | 需要的职责（`gates.<key>.role`） | 状态变化 |
@@ -245,11 +289,20 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 | `lint` | 结构/引用/hash/基线/收尾一致性检查 | 否（只读） |
 | `lint rules` | 项目规则基线 vs 随包规则的版本与字段一致性 | 否（只读） |
 | `recover list` / `recover --release-lock <对象> --actor --confirm` | 残留锁清理 | 是（需人工确认） |
+| `upstream bind --id <URL> --source <来源>[--source …] [--doc agents\|readme] --actor --confirm` | 记录上游绑定到 `AGENTS.md` / `README.md` 的受管理区块 | 是（需人工确认；区块外不动） |
+| `upstream show` | 展示当前绑定与来源文档（未配置 → 退出码 1，`UPSTREAM_NOT_CONFIGURED`） | 否（只读） |
+| `upstream status` | 只读报告 `data.configured`，供接入流程判断 | 否（只读） |
+
+> `upstream show` / `upstream status` 在这里只用于「确认自己刚写的绑定对不对」。
+> 查上游**进度**不归本 Skill，归 `upstream-progress`（`progress report`，只读，不需 `--confirm`）。
 
 ## 交接到下一阶段
 
 初始化完成、`team.md` 与 `constitution.md` 都确认后，把这几件事说清楚再交给 `requirements` Skill：
 项目根目录、裁剪了哪些目录、团队成员与职责（谁能排期 / 谁能批准 / 谁能验收）、
 `constitution.md` 里影响设计与测试的硬约束。
+还要额外说一句上游绑定的状态（**绑定是可选项，不影响交接**）：
+绑了就说 `identifier` + 来源数 + 落在哪个文档；没绑就明确告知「进度查询尚未配置」，
+必要时给出补绑定的确切命令，并说明进度查询由 `upstream-progress` Skill 负责（只读，随时可问）。
 自检一遍：`python3 <flow-core> doctor` 全 `ok`、`python3 <flow-core> lint` 无 error。
 之后由 `requirements` 接手第一条需求。

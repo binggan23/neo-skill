@@ -92,6 +92,17 @@ def read_yaml(path: Path) -> Any:
         raise FsError(f"YAML 解析失败：{exc}", path) from exc
 
 
+def parse_yaml_text(text: str) -> Any:
+    """解析一段内嵌 YAML（如文档里的受管理区块 body）；非法 → `FsError`。
+
+    与 `read_yaml` 的区别只在不落盘：调用方需要从 Markdown 区块里解析结构化内容。
+    """
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise FsError(f"YAML 解析失败：{exc}") from exc
+
+
 def load_yaml(path: Path, default: Any = None) -> Any:
     """读取 YAML；文件不存在返回 `default`。"""
     if not path.is_file():

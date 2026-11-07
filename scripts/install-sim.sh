@@ -7,7 +7,7 @@
 # 复现同一套复制语义，从而在没有远端的情况下验证：
 #   1. 完整的独立 Skill 集合都被识别（路由层 + 五个阶段 + 只读进度查询），
 #      集合从 `skills/` **自动派生**（只算含 `SKILL.md` 的目录），不维护第二份清单；
-#      另有一个最小必需集合，缺一个就非零退出，新增 Skill 自动被发现、删除必需 Skill 会红；
+#      新增、删除或改名 Skill 只需改仓库目录，不需改脚本；目标集合与源集合不一致即失败；
 #   2. `runtime/`（flow-core + 声明式规则 + 模板）随 skill 目录一起走；
 #   3. 安装后的 flow-core 只靠**相对位置**解析资源，不依赖源码仓库路径。
 #
@@ -23,10 +23,6 @@ TARGET=""
 INTO=".claude/skills"
 VERIFY_ONLY=0
 SKILLS_ROOT="$REPO_ROOT/skills"
-
-# 最小必需集合：这些 Skill 缺任何一个都属于「安装缺口」，必须非零退出而不是静默放过。
-# 它**不是**完整清单——完整清单从 skills 根目录自动派生，新增 Skill 无需改这里。
-REQUIRED_SKILLS="neo-skill project requirements prd dev acceptance upstream-progress"
 
 usage() {
   awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
@@ -83,7 +79,7 @@ discover_skills() {
     [ -d "$dir" ] || continue
     [ -f "$dir/SKILL.md" ] || continue
     basename "$dir"
-  done | sort
+  done | LC_ALL=C sort
 }
 
 DISCOVERED="$(discover_skills "$SKILLS_ROOT")"
@@ -110,14 +106,21 @@ fi
 echo "安装目标：$SKILLS_DIR"
 echo "skills 源：$SKILLS_ROOT"
 
-echo "--- 0. 必需 Skill 集合（缺任一个即安装缺口，非零退出）---"
-for name in $REQUIRED_SKILLS; do
-  if printf '%s\n' "$DISCOVERED" | grep -qx "$name"; then
-    echo "OK-REQUIRED $name"
-  else
-    echo "MISSING-REQUIRED $name（skills 源里没有这个 Skill 目录）"; status=1
+echo "--- 0. Skill 集合一致性（源与目标必须相同，否则非零退出）---"
+INSTALLED="$(discover_skills "$SKILLS_DIR")"
+for name in $DISCOVERED; do
+  if ! printf '%s\n' "$INSTALLED" | grep -qx "$name"; then
+    echo "MISMATCH 目标缺少 Skill：$name"; status=1
   fi
 done
+for name in $INSTALLED; do
+  if ! printf '%s\n' "$DISCOVERED" | grep -qx "$name"; then
+    echo "MISMATCH 目标多出 Skill：$name"; status=1
+  fi
+done
+if [ "$INSTALLED" = "$DISCOVERED" ]; then
+  echo "OK-SET 源与目标的 Skill 集合一致（$SKILL_COUNT 个）"
+fi
 
 echo "--- 1. Skill 发现与识别（自动派生；SKILL.md 必须有 name 与 description）---"
 echo "发现 $SKILL_COUNT 个 Skill：$(printf '%s ' $DISCOVERED | sed 's/ $//')"

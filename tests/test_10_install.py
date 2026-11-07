@@ -149,15 +149,18 @@ def test_install_进度_skill_被安装且有有效_frontmatter(tmp_path: Path) 
     assert "upstream-progress" not in STAGE_SKILLS
 
 
-def test_install_缺必需_skill_时非零退出(tmp_path: Path) -> None:
-    """缺一个必需 Skill（这里删掉 upstream-progress）→ 非零退出，不静默放过。"""
-    root = _fake_skills_root(tmp_path, drop="upstream-progress")
-    assert not (root / "upstream-progress").exists()
+def test_install_目标_skill_集合与源集合不一致时非零退出(tmp_path: Path) -> None:
+    """安装后故意删掉一个 Skill：与 --skills-root 派生的集合不一致，必须非零退出。"""
+    root = _fake_skills_root(tmp_path)
+    target = tmp_path / "proj"
+    assert _install(target, "--skills-root", str(root)).returncode == 0
+    missing = "upstream-progress"
+    shutil.rmtree(target / ".claude" / "skills" / missing)
 
-    proc = _install(tmp_path / "proj", "--skills-root", str(root))
+    proc = _install(target, "--skills-root", str(root), "--verify-only")
 
-    assert proc.returncode != 0, f"缺必需 Skill 却仍返回 0：\n{proc.stdout}"
-    assert "MISSING-REQUIRED upstream-progress" in proc.stdout, proc.stdout
+    assert proc.returncode != 0, f"目标缺 {missing} 却仍返回 0：\n{proc.stdout}"
+    assert f"MISMATCH 目标缺少 Skill：{missing}" in proc.stdout, proc.stdout
     assert "INSTALL-SIM FAILED" in proc.stdout + proc.stderr
 
 

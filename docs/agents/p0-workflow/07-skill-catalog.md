@@ -81,6 +81,6 @@ Skill 按**职责**分两层（SRS-FR-090）。分层看的是「谁触发它」
 3. **同步路由**：`skills/neo-skill/SKILL.md` 的阶段表与命令索引要能指向新 Skill。
 4. **同步流程**：[02-stage-flow.md](02-stage-flow.md) 的阶段顺序与交接；若改了状态或职责，另改 [03](03-state-and-decisions.md)。
 5. **同步图件**：需要时按 [06](06-visualization.md) 重画并重新取校验回执，不要沿用旧回执。
-6. **验证**：`./scripts/install-sim.sh` 必须仍能发现全部 Skill。它的发现是**自动派生**的——`skills/` 下每个含 `SKILL.md` 的目录就是一个 Skill（新增 Skill 无需改清单），逐个校验 frontmatter 的 `name`（须等于目录名）与 `description` 非空；另有一个最小**必需集合**（`neo-skill project requirements prd dev acceptance upstream-progress`），缺任一个即非零退出。删除或改名 Skill 时若它属于必需集合，必须同步更新脚本里的 `REQUIRED_SKILLS` 并说明原因。CI 会跑这条。
+6. **验证**：`./scripts/install-sim.sh` 必须仍能发现全部 Skill。它的发现是**自动派生**的——`skills/` 下每个含 `SKILL.md` 的目录就是一个 Skill，逐个校验 frontmatter 的 `name`（须等于目录名）与 `description` 非空，并要求源目录与安装目标的 Skill 集合完全一致；`neo-skill` 及其 `runtime/` 必须存在。**新增 Skill 自动发现；删除/改名只需改仓库目录，不需改脚本。** CI 会跑这条。
 
 删除 Skill 同样走这六步：先在本表标为移除并写清原因与替代路径，再删 SKILL.md、清路由、清命令引用，避免留下指向不存在文件的说明。

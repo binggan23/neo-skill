@@ -261,6 +261,18 @@ def test_缺_source_是参数用法错误且不写入(project: Path) -> None:
     assert show.json["next_actions"]
 
 
+def test_不支持的来源_scheme_在绑定前失败且不写入(project: Path) -> None:
+    write(project / "AGENTS.md", "# 指引\n")
+    before = snapshot(project)
+
+    result = bind(project, sources=["ssh://example.com/upstream/releases"])
+
+    assert result.code == 1, result
+    assert result.error_codes() == ["UPSTREAM_SOURCE_UNSUPPORTED"]
+    assert snapshot(project) == before
+    assert run_cli(project, "upstream", "show").error_codes() == ["UPSTREAM_NOT_CONFIGURED"]
+
+
 def test_未配置时_show_失败而_status_只读报告未配置(project: Path) -> None:
     show = run_cli(project, "upstream", "show")
     assert show.code == 1

@@ -1,6 +1,6 @@
 ---
 name: neo-skill
-description: Neo Skill P0 研发闭环入口。当用户要初始化或诊断项目工作区、管理需求与排期、编写/评审/批准 PRD、从 PRD 启动开发、提交验收或执行人工验收时使用。
+description: Neo Skill P0 研发闭环入口。当用户要初始化或诊断项目工作区、管理需求与排期、编写/评审/批准 PRD、从 PRD 启动开发、提交验收或执行人工验收，或要查询已绑定上游项目的远端进度时使用。
 ---
 
 # Neo Skill
@@ -57,6 +57,8 @@ npx skills@latest update
 | `prd` | PRD 草稿、结构自审、提交评审、人工批准、基线 hash 与变更请求（CR） | 已可用 |
 | `dev` | 开发门禁、绑定 PRD、Spec/Plan/Tasks、状态与范围检查、验证证据与提交人工验收 | 已可用 |
 | `acceptance` | Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过、收尾同步 `closeout` | 已可用 |
+| `upstream` | 上游进度来源绑定：写入（`bind`）、展示（`show`）、状态（`status`）；只改受管理区块 | 已可用 |
+| `progress` | 只读查询上游远端进度：已发布 / 进行中 / 来源 / 不确定性 / 本地提醒 | 已可用 |
 | `index` | 生成受管理索引区块（backlog / feature-map / PRD 索引），区块外内容保留 | 已可用 |
 | `recover` | 中断事务的基线校验恢复、残留锁的显式清理 | 已可用 |
 | `lint` | 结构、引用、hash、基线与收尾一致性检查（只读；有 error 退出码 1） | 已可用 |
@@ -79,6 +81,22 @@ flow-core recover list                                  # 看有哪些未完成�
 flow-core recover run --tx TX-... --actor alice --confirm  # 校验基线后续跑（冲突则拒绝）
 flow-core recover --release-lock PRD-001 --actor alice --confirm   # 只在进程已结束时清锁
 ```
+
+### 上游进度（只读）
+
+```bash
+flow-core upstream status                # 已绑定吗？data.configured（未配置也算成功）
+flow-core upstream show                  # 已绑定的 URL 与来源（未配置 → 退出码 1）
+flow-core progress report                # 按绑定查远端进度（只读，不需要 --confirm）
+flow-core progress report --upstream https://github.com/example/upstream --source https://github.com/example/upstream/releases
+flow-core upstream bind --id https://github.com/example/upstream --source https://github.com/example/upstream/releases --actor alice --confirm
+```
+
+`upstream bind` 是**写操作**（只改 `AGENTS.md`／`README.md` 里的受管理区块），要 `--actor` + `--confirm`；
+`upstream show` / `upstream status` / `progress report` 都是**只读**。报告分五类：
+`published`（已发布/已完成）、`ongoing`（进行中/开放）、`sources`（来源与可访问性）、
+`uncertainty`（不可访问/不完整/过期/矛盾）、`local_reminders`（本地 dirty/ahead/behind，**不在上游进度内**）。
+临时查询不写回任何文档。
 
 ### 常用起步
 
@@ -115,14 +133,21 @@ Agent 必须先把决定和影响讲清楚，再询问用户是否确认；不�
 
 ## 阶段细节
 
-各阶段的操作步骤、检查清单与话术由对应的阶段 Skill 提供（共五个，均已随包分发）：
+各阶段的操作步骤、检查清单与话术由对应的阶段 Skill 提供（共五个，均已随包分发），
+上游进度查询与项目绑定的细节另由 `upstream-progress` 与 `project` 提供：
 
 | 阶段 | Skill | 负责 |
 | --- | --- | --- |
-| 项目 | `project` | `doctor` 环境诊断、`init` 初始化、团队与 `constitution.md` 确认、`--prune` 裁剪、冲突处理、幂等复跑 |
+| 项目 | `project` | `doctor` 环境诊断、`init` 初始化、团队与 `constitution.md` 确认、`--prune` 裁剪、冲突处理、幂等复跑、可选的上游进度来源绑定（阶段七） |
 | 需求 | `requirements` | 草稿、grilling、共识确认、人工排期 |
 | PRD | `prd` | 草稿、自审、提交评审、人工批准、基线 hash 与变更请求（CR） |
 | 开发 | `dev` | 开发门禁、Spec/Plan/Tasks、验证证据、提交人工验收 |
 | 验收 | `acceptance` | Demo/checklist、逐条 AC 结论、验收通过/不通过、收尾 |
+| 上游进度（非阶段） | `upstream-progress` | 只读查询绑定上游的远端进度；无绑定时临时查询；本地提醒单列；**不改任何状态** |
+
+`upstream-progress` **不是**第五个阶段：它可以在任意时刻被调用（包括验收之后），
+结果只回答「远端现在是什么样」，不推进任何状态、不写任何文档。
+写绑定是本表第一行 `project` 阶段七的动作，不是它的。
 
 本文件只做总览与命令索引，不重复阶段细节。新项目从 `project` 开始：先 `doctor`，再 `init`。
+有上游项目时在接入收尾问一句要不要绑定；没有就接着走需求，只是进度查询处于未配置状态。

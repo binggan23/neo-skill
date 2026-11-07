@@ -1,13 +1,16 @@
 ---
 name: project
-description: Neo Skill 项目阶段入口。当用户要诊断环境、初始化项目工作区、确认团队与 constitution、裁剪目录、修复初始化冲突或重跑初始化时使用。
+description: Neo Skill 项目阶段入口。当用户要诊断环境、初始化项目工作区、确认团队与 constitution、裁剪目录、修复初始化冲突或重跑初始化，或要把项目绑定到一个上游项目（记录上游 URL 与远端进度来源，供后续查询上游进度）时使用。
 ---
 
 # project：环境诊断与项目初始化
 
 本 Skill 负责把「一个空目录」变成**可排期、可开发、可验收的项目工作区**：
-诊断 → 初始化 → 团队摘要确认 → `constitution.md` 确认 → 冲突处理 → 裁剪决策 → 幂等复跑。
-它**不**负责需求、PRD、开发与验收（见 `requirements`、`prd`、`dev`、`acceptance`）。
+诊断 → 初始化 → 团队摘要确认 → `constitution.md` 确认 → 冲突处理 → 裁剪决策 → 幂等复跑
+→（可选）上游进度来源绑定。它是**入口/编排类** Skill：多步接入由它编排，
+「远端事实才是进度来源、本地提醒单列」那条可直接复用的纪律属 `upstream-progress`。
+它**不**负责需求、PRD、开发与验收（见 `requirements`、`prd`、`dev`、`acceptance`），
+也不负责查询上游进度（见 `upstream-progress`）——本 Skill 只写绑定配置，不给进度结论。
 
 词汇以项目 `GLOSSARY.md` 为准：项目基线、受管理区块、人工确认、未配置完成。
 流程规则以 `docs/srs.md` §5.1（FR-010～013）、§5.2（FR-020～025）为准。
@@ -219,7 +222,8 @@ python3 <flow-core> init --root . --json     # 第二次跑：已存在的文件
 ## 阶段七：上游进度来源绑定（可选，SRS-FR-091 / 095）
 
 **在初始化收尾时问一句：这个项目有没有上游项目（上游仓库、产品线或项目标识）？**
-绑定只是**配置**（去哪个远端、看哪些资料），不是进度事实；进度查询由 `progress` 能力单独负责。
+绑定只是**配置**（去哪个远端、看哪些资料），不是进度事实；绑定**不是必填项**，
+进度查询由 `upstream-progress` Skill 单独负责（只读），本阶段只负责把配置写对。
 
 流程（**先展示，后确认，再写入**）：
 
@@ -288,10 +292,16 @@ python3 <flow-core> upstream status --root . --json   # 只读：data.configured
 | `upstream show` | 展示当前绑定与来源文档（未配置 → 退出码 1，`UPSTREAM_NOT_CONFIGURED`） | 否（只读） |
 | `upstream status` | 只读报告 `data.configured`，供接入流程判断 | 否（只读） |
 
+> `upstream show` / `upstream status` 在这里只用于「确认自己刚写的绑定对不对」。
+> 查上游**进度**不归本 Skill，归 `upstream-progress`（`progress report`，只读，不需 `--confirm`）。
+
 ## 交接到下一阶段
 
 初始化完成、`team.md` 与 `constitution.md` 都确认后，把这几件事说清楚再交给 `requirements` Skill：
 项目根目录、裁剪了哪些目录、团队成员与职责（谁能排期 / 谁能批准 / 谁能验收）、
 `constitution.md` 里影响设计与测试的硬约束。
+还要额外说一句上游绑定的状态（**绑定是可选项，不影响交接**）：
+绑了就说 `identifier` + 来源数 + 落在哪个文档；没绑就明确告知「进度查询尚未配置」，
+必要时给出补绑定的确切命令，并说明进度查询由 `upstream-progress` Skill 负责（只读，随时可问）。
 自检一遍：`python3 <flow-core> doctor` 全 `ok`、`python3 <flow-core> lint` 无 error。
 之后由 `requirements` 接手第一条需求。

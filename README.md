@@ -15,13 +15,19 @@ npx skills@latest add binggan23/neo-skill -a claude
 
 升级只使用 `npx skills@latest update`。
 
-> **已实测可用**：上面两条命令均已验证通过，6 个 Skill 全部被发现安装，
+> **已实测可用**：上面两条命令均已验证通过，Skill 全部被发现安装，
 > `neo-skill/runtime/`（`flow-core`、规则、模板）随包分发，安装后不依赖源码仓库路径。
+> （当时的实测范围是 v0.1.0 的 6 个 Skill；v0.1.1 新增只读 Skill `upstream-progress`，
+> 它的安装与分发发现需要在安装模拟/分发包的发现列表里同步才能随 `npx` 安装被识别。）
 > 完整实测证据与兼容性边界见 `docs/pilot-report.md`。
 > 若需在无网络环境离线分发，用 `scripts/build-dist.sh` 产出 `dist/neo-skill-<ver>.zip`。
 
-包内包含 6 个 Skill：路由层 `neo-skill` 与 5 个阶段 Skill
-`project`（初始化/诊断）、`requirements`（需求与排期）、`prd`、`dev`、`acceptance`。
+包内包含 7 个 Skill：路由层 `neo-skill`、5 个阶段 Skill
+`project`（初始化/诊断）、`requirements`（需求与排期）、`prd`、`dev`、`acceptance`，
+以及只读的 `upstream-progress`（查已绑定上游的远端进度）。
+分层：前五个阶段 Skill 与路由层属**入口/编排类**；`upstream-progress` 两层兼有——
+用户直接问进度时它是入口，被别的 Skill 借用“远端事实才是进度来源”这条纪律时它是基础。
+边界：入口可以调用基础 Skill，基础 Skill 不得隐式启动无关的入口工作流。
 
 ## 快速开始
 
@@ -48,6 +54,7 @@ skills/requirements/SKILL.md           阶段 Skill：需求、grilling、人工
 skills/prd/SKILL.md                    阶段 Skill：PRD、评审、批准、CR
 skills/dev/SKILL.md                    阶段 Skill：开发门禁、Spec/Plan/Tasks、验证
 skills/acceptance/SKILL.md             阶段 Skill：Demo、逐条 AC、验收、收尾
+skills/upstream-progress/SKILL.md      基础 Skill：只读查询上游远端进度（本地提醒单列，不写回）
 tests/                                 flow-core CLI 黑盒测试
 scripts/build-dist.sh                  打包 zip + tar.gz + sha256（可重现）
 scripts/install-sim.sh                 模拟 skills.sh 安装到 .claude/skills/
@@ -64,6 +71,7 @@ scripts/pilot.sh                       隔离端到端试点
 | `acceptance`（Demo/checklist、逐条 AC 人工结论、验收通过/不通过/有条件通过、收尾同步 `closeout`） | 已可用 |
 | `index`（受管理索引区块）、`recover`（中断事务与残留锁） | 已可用 |
 | `lint`（`check`/`rules`，`--only CODE,CODE`） | 已可用 |
+| `upstream`（绑定：`bind`/`show`/`status`）、`progress`（`report`，只读查询远端进度） | 已可用 |
 
 所有命令支持 `--root`、`--json`、`--actor`、`--confirm`；`--json` 统一返回
 `success` / `command` / `artifacts` / `errors` / `next_actions`。退出码 `0`/`1`/`2`。

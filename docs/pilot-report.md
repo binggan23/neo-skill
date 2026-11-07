@@ -8,6 +8,11 @@
 
 > 本报告只记录**实际跑过**的结果。任何未实测的能力都写进「未承诺的兼容性边界」，
 > 未伪造任何验收数据、证据或身份。
+>
+> **历史证据，不要改历史结论**：全文的「6 个 Skill」「五个阶段 + 路由层」描述的是
+> `flow-core 0.1.0` 那次试点（`feat/neo-skill-p0`）的真实范围。v0.1.1 新增了只读 Skill
+> `upstream-progress` 与 `upstream` / `progress` 两个命令组，当前 Skill 集合以
+> [Skill 注册表](../docs/agents/p0-workflow/07-skill-catalog.md) 为准；本报告的数字不回填。
 
 ---
 

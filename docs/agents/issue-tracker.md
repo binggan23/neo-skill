@@ -31,8 +31,12 @@ This repo closes work with a commit, not a PR. Four edits in one commit, in this
 Precedent: `63dd039` (P0), `267185b` + `a72797e` (v0.1.1).
 
 A ticked box claims the bullet is **satisfied**, not merged: the integration branch counts.
-Ticking a box whose evidence is only another test that duplicates a hard-coded list is how a
-check silently stops checking — write the observable into the bullet instead (`删除核心 Skill → 退出非零`).
+
+Every bullet names its **observable** — the command, exit code, error code, or file state a
+skeptic can check. A bullet that only says "must not miss a Skill" cannot be ticked honestly,
+because the same two designs (hard-coded list vs derived floor) both claim it; the observable
+(`删掉一个 Skill 目录 → install-sim 退出非零`) picks one. `.scratch/*/issues/*.md` bullets are
+checked mechanically: no backticked path, error code, exit code, or `→` ⇒ rewrite the bullet.
 
 ## Wayfinding operations
 

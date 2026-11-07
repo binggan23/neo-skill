@@ -212,3 +212,64 @@ def test_进度_Skill_写明只读边界与本地提醒的独立地位():
     assert "写回" in text, "没有写「不自动写回文档」"
     assert "upstream bind" in text, "没有给出写入绑定的确切命令"
     assert "progress report" in text, "没有给出查询的确切命令"
+
+
+# --------------------------------------------------------------------------
+# 票的验收项必须带可观察断言（retro：v0.1.1 的 REQUIRED_SKILLS 振荡就出在这）
+# --------------------------------------------------------------------------
+# 「不能漏掉 Skill」这类验收项，用两份名字清单都能自称满足；只有点明**可观察结果**
+# （哪个命令、什么退出码、哪个错误码、哪个文件状态）才排除掉另一种设计。
+# 这里做机械检查：每条验收 bullet 至少含一处可观察物。
+OBSERVABLE_RE = re.compile(
+    r"`[^`]+`"                 # 反引号里的命令/路径/错误码
+    r"|[A-Z][A-Z0-9_]{3,}"     # 全大写错误码/常量（MISSING-REQUIRED、NEO_SKILL_HOME）
+    r"|退出码|非零|退出 \d"     # 退出码表述
+    r"|→"                       # 因果箭头（删掉 X → 非零退出）
+    r"|\d+ ?(个|条|次|秒|项)"    # 可数的断言（7 个 Skill、10 秒）
+)
+BULLET_RE = re.compile(r"^\s*- \[[ x]\] ")
+SPEC_GLOB = ".scratch/*/issues/*.md"
+
+
+def is_closed(rel_path: str) -> bool:
+    """票是否已 resolved（只看文件开头的状态行，不读整份票）。"""
+    return "**Status:** resolved" in read(REPO_ROOT / rel_path).split("\n## ", 1)[0]
+
+
+def acceptance_bullets() -> list[tuple[str, int, str]]:
+    """(相对路径, 行号, 正文) —— 全部 spec 目录下的验收勾选项。"""
+    found: list[tuple[str, int, str]] = []
+    for path in sorted(REPO_ROOT.glob(SPEC_GLOB)):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if BULLET_RE.match(line):
+                found.append((str(path.relative_to(REPO_ROOT)), number, line))
+    assert found, "一个验收 bullet 都没找到（票的格式变了？）"
+    return found
+
+
+def test_未关闭的票每条验收项都写明了可观察断言():
+    """只管**还没关闭**的票。
+
+    已 resolved 的票是历史记录，改它们的勾选项等于改历史（tracker 的补充走 `## Comments`，
+    不改原 bullet）。这条检查保护的是**下一次写票**——v0.1.1 的 REQUIRED_SKILLS
+    在三个 commit 里 add → delete → re-add，根因就是那条验收只写了「不能静默漏掉 Skill」，
+    而两份相反的设计都能自称满足。
+    """
+    scope = [item for item in acceptance_bullets() if not is_closed(item[0])]
+    offenders = [
+        f"{path}:{line} {text.strip()[:80]}"
+        for path, line, text in scope
+        if not OBSERVABLE_RE.search(text)
+    ]
+    assert offenders == [], (
+        "这些验收项只有「应该怎样」没有「怎么看出来」（补一个命令/退出码/错误码/路径）：\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_可观察断言检查能抓住模糊的验收项(tmp_path: Path) -> None:
+    """合成一张票，证明上一条检查真的会红（否则它只是个永远为真的装饰）。"""
+    vague = "- [ ] 系统不能静默漏掉 Skill。"
+    sharp = "- [ ] 删掉一个 Skill 目录 → install-sim.sh 退出码非零，并报 MISSING-REQUIRED。"
+    assert not OBSERVABLE_RE.search(vague), "模糊的验收项逃过了检查，检查没有作用"
+    assert OBSERVABLE_RE.search(sharp), "写得清楚的验收项被误判"

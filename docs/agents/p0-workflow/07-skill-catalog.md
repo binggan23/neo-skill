@@ -81,6 +81,6 @@ Skill 按**职责**分两层（SRS-FR-090）。分层看的是「谁触发它」
 3. **同步路由**：`skills/neo-skill/SKILL.md` 的阶段表与命令索引要能指向新 Skill。
 4. **同步流程**：[02-stage-flow.md](02-stage-flow.md) 的阶段顺序与交接；若改了状态或职责，另改 [03](03-state-and-decisions.md)。
 5. **同步图件**：需要时按 [06](06-visualization.md) 重画并重新取校验回执，不要沿用旧回执。
-6. **验证**：`./scripts/install-sim.sh` 必须仍能发现全部 Skill。它的发现是**自动派生**的——`skills/` 下每个含 `SKILL.md` 的目录就是一个 Skill，逐个校验 frontmatter 的 `name`（须等于目录名）与 `description` 非空，并要求源目录与安装目标的 Skill 集合完全一致；`neo-skill` 及其 `runtime/` 必须存在。脚本里还留了一条**必需底线**（`REQUIRED_SKILLS`，当前核心七个），它只是防「源与目标一致地少一个核心能力」的静默缺口，不是完整清单：**新增 Skill 自动发现、不用改脚本；删除或改名核心 Skill 才需同步那一行与本表第 1 步**。CI 会跑这条。
+6. **验证**：`./scripts/install-sim.sh` 必须仍能发现全部 Skill。它的发现是**自动派生**的——`skills/` 下每个含 `SKILL.md` 的目录就是一个 Skill，逐个校验 frontmatter 的 `name`（须等于目录名）与 `description` 非空，并要求源目录与安装目标的 Skill 集合完全一致；`neo-skill` 及其 `runtime/` 必须存在。必需底线**不在脚本里写死**：脚本从本表（`skills/<name>/SKILL.md` 链接）派生必需集合，所以**本表就是 Skill 名单的唯一事实来源**，新增/删除/改名都只改目录加本表，脚本不用动。删了目录却漏改本表 → `MISSING-REQUIRED`；目录有了但本表没列 → `tests/test_12_docs.py` 报。CI 会跑这条。
 
 删除 Skill 同样走这六步：先在本表标为移除并写清原因与替代路径，再删 SKILL.md、清路由、清命令引用，避免留下指向不存在文件的说明。

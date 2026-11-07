@@ -7,9 +7,10 @@
 # 复现同一套复制语义，从而在没有远端的情况下验证：
 #   1. 完整的独立 Skill 集合都被识别（路由层 + 五个阶段 + 只读进度查询），
 #      集合从 `skills/` **自动派生**（只算含 `SKILL.md` 的目录），不维护第二份清单；
-#      另有一条必需底线（REQUIRED_SKILLS，当前核心七个），只防「源与目标一致地少一个‖
-#      核心 Skill」的静默缺口。新增 Skill 无需改脚本；删除/改名核心 Skill 才需同步那一行。
-#      目标集合与源集合不一致、或源里缺核心 Skill，都非零退出；
+#      另有一条必需底线：catalog（Skill 清单的唯一导航入口）列出的每个 Skill 都必须在源里。
+#      名单**只在 catalog 一处**，本脚本是它的投影，不维护自己的清单——新增/删除/改名
+#      Skill 都不用改脚本，改 catalog 即可。目标集合与源集合不一致、或源里缺 catalog
+#      列出的 Skill，都非零退出；
 #   2. `runtime/`（flow-core + 声明式规则 + 模板）随 skill 目录一起走；
 #   3. 安装后的 flow-core 只靠**相对位置**解析资源，不依赖源码仓库路径。
 #
@@ -26,11 +27,21 @@ INTO=".claude/skills"
 VERIFY_ONLY=0
 SKILLS_ROOT="$REPO_ROOT/skills"
 
-# 必需 Skill 的底线集合：安装模拟必须看到这些名字，少一个就非零退出。
-# 它**不是**完整清单（完整清单从 skills 根目录自动派生，新增 Skill 无需改这里），
-# 只用来堵住「仓库里某个核心 Skill 目录被删掉/改名，而源与目标恰好一起变空」这种
-# 两边都一致、却真的少了能力的静默缺口。删除/改名核心 Skill 时同步本行与 catalog 第 6 步。
-REQUIRED_SKILLS="neo-skill project requirements prd dev acceptance upstream-progress"
+# 必需 Skill 的底线集合**不在这里写死**：它从 catalog 表（Skill 清单的唯一导航入口）派生。
+# 这样仓库里只有**一份** Skill 名单（catalog），安装侧只是它的投影：
+#   - 新增 Skill：加目录 + 加 catalog 一行，安装侧自动跟上；
+#   - 删除/改名：删目录 + 删 catalog 行，安装侧自动跟上，不会留下陈旧清单。
+# 删了目录却没改 catalog → 本条报 MISSING-REQUIRED；反过来 catalog 有、目录没有同样报错；
+# 目录有、catalog 没列由 tests/test_12_docs.py 报。
+SKILL_CATALOG="$REPO_ROOT/docs/agents/p0-workflow/07-skill-catalog.md"
+
+# 从 catalog 的 `skills/<name>/SKILL.md` 链接里取出全部 Skill 名。
+required_skills() {
+  [ -f "$SKILL_CATALOG" ] || return 0
+  grep -oE '\]\(\.\./\.\./\.\./skills/[a-z0-9-]+/SKILL\.md\)' "$SKILL_CATALOG" \
+    | sed 's|.*skills/||; s|/SKILL\.md)||' \
+    | LC_ALL=C sort -u
+}
 
 usage() {
   awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
@@ -114,12 +125,16 @@ fi
 echo "安装目标：$SKILLS_DIR"
 echo "skills 源：$SKILLS_ROOT"
 
-echo "--- 0. 必需 Skill 底线（核心集合少一个就非零退出）---"
-for name in $REQUIRED_SKILLS; do
+echo "--- 0. 必需 Skill 底线（catalog 列出的每个 Skill 都必须在源里）---"
+CATALOG_REQUIRED="$(required_skills)"
+if [ -z "$CATALOG_REQUIRED" ]; then
+  echo "FAIL 无法从 catalog 派生必需集合（$SKILL_CATALOG）"; status=1
+fi
+for name in $CATALOG_REQUIRED; do
   if printf '%s\n' "$DISCOVERED" | grep -qx "$name"; then
     echo "OK-REQUIRED $name"
   else
-    echo "MISSING-REQUIRED $name（skills 源里没有这个核心 Skill 目录，安装会静默少一项能力）"
+    echo "MISSING-REQUIRED $name（catalog 列出了它，但 skills 源里没有这个目录）"
     status=1
   fi
 done

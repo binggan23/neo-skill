@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SIM = REPO_ROOT / "scripts" / "install-sim.sh"
 SKILLS_DIR_SRC = REPO_ROOT / "skills"
+SKILL_CATALOG = REPO_ROOT / "docs" / "agents" / "p0-workflow" / "07-skill-catalog.md"
 # 阶段 Skill：进度查询 Skill（upstream-progress）**不是**阶段 Skill，不进这个集合。
 STAGE_SKILLS = ["project", "requirements", "prd", "dev", "acceptance"]
 
@@ -34,6 +36,12 @@ STAGE_SKILLS = ["project", "requirements", "prd", "dev", "acceptance"]
 def shipped_skills() -> list[str]:
     """仓库随包的 Skill 集合：`skills/` 下含 SKILL.md 的目录（自动派生，不写死名单）。"""
     return sorted(path.parent.name for path in SKILLS_DIR_SRC.glob("*/SKILL.md"))
+
+
+def catalogued_skills() -> list[str]:
+    """catalog 表里列出的 Skill（安装模拟的必需底线的唯一事实来源）。"""
+    text = SKILL_CATALOG.read_text(encoding="utf-8")
+    return sorted(set(re.findall(r"\]\(\.\./\.\./\.\./skills/([a-z0-9-]+)/SKILL\.md\)", text)))
 
 
 def _run(*args: str, env: dict | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -149,17 +157,51 @@ def test_install_进度_skill_被安装且有有效_frontmatter(tmp_path: Path) 
     assert "upstream-progress" not in STAGE_SKILLS
 
 
-def test_install_源里缺核心_skill_时非零退出(tmp_path: Path) -> None:
-    """源目录里直接少一个核心 Skill：源与目标会「一致地」都少它，
-    光靠集合一致性检查抓不到，必须由必需底线报 MISSING-REQUIRED 并非零退出。"""
+def test_install_源里缺_catalog_列出的_skill_时非零退出(tmp_path: Path) -> None:
+    """源目录里直接少一个 catalog 列出的 Skill：源与目标会「一致地」都少它，
+    光靠集合一致性检查抓不到，必须由 catalog 派生的必需底线报 MISSING-REQUIRED。
+
+    这正是三个 commit 里 add → delete → re-add 的那个振荡点：必需名单只能有一个来源。
+    """
     root = _fake_skills_root(tmp_path, drop="upstream-progress")
     assert not (root / "upstream-progress").exists()
 
     proc = _install(tmp_path / "proj", "--skills-root", str(root))
 
-    assert proc.returncode != 0, f"源里缺核心 Skill 却仍返回 0：\n{proc.stdout}"
+    assert proc.returncode != 0, f"源里缺 catalog 列出的 Skill 却仍返回 0：\n{proc.stdout}"
     assert "MISSING-REQUIRED upstream-progress" in proc.stdout, proc.stdout
     assert "INSTALL-SIM FAILED" in proc.stdout + proc.stderr
+
+
+def test_install_必需底线来自_catalog_而不是脚本里的第二份名单(tmp_path: Path) -> None:
+    """把 catalog 里只列了一个 Skill：安装模拟只能要那一个。
+
+    证明底线是 catalog 的**投影**——如果脚本里还藏着另一份写死的名单，
+    剔除 catalog 后它仍会要 project/prd/…，这个用例就会红。
+    """
+    sandbox = tmp_path / "repo"
+    catalog = sandbox / "docs" / "agents" / "p0-workflow" / "07-skill-catalog.md"
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text(
+        "| Skill |\n| --- |\n"
+        "| [`neo-skill`](../../../skills/neo-skill/SKILL.md) |\n",
+        encoding="utf-8",
+    )
+    # 脚本要在它自己的 REPO_ROOT 下找 catalog，所以把脚本连同 skills 一起软链成一份「仓库」
+    (sandbox / "scripts").mkdir()
+    (sandbox / "scripts" / "install-sim.sh").symlink_to(INSTALL_SIM)
+    (sandbox / "skills").symlink_to(SKILLS_DIR_SRC, target_is_directory=True)
+
+    proc = subprocess.run(
+        ["bash", str(sandbox / "scripts" / "install-sim.sh"), "--target", str(tmp_path / "proj")],
+        capture_output=True, text=True, encoding="utf-8", timeout=180,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    required = [line for line in proc.stdout.splitlines() if line.startswith("OK-REQUIRED ")]
+    assert required == ["OK-REQUIRED neo-skill"], (
+        "必需底线不是 catalog 的投影（脚本里大概还留着一份写死的名单）：" + repr(required)
+    )
 
 
 def test_install_目标_skill_集合与源集合不一致时非零退出(tmp_path: Path) -> None:

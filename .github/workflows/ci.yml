@@ -5,7 +5,8 @@ name: flow-core
 # 目标不是「让提交变绿」，而是**让违规结果无法通过**：
 #   - 语法检查（compileall）失败 → 作业失败；
 #   - 静态检查（ruff）或类型检查（mypy）失败 → 作业失败；
-#   - 每一批黑盒测试失败 → 作业失败（按文件循环，单文件失败立即中断）；
+#   - 每一批黑盒测试失败 → 作业失败（按文件循环，单文件失败立即中断；v0.1.1 起用
+#     `tests/test_*.py` 通配，新增测试文件不会静默漏跑）；
 #   - 在临时初始化项目上跑 `doctor --strict` 与 `lint --json`，**非零退出码即失败**；
 #   - 安装模拟（install-sim.sh）与隔离端到端试点（pilot.sh）各跑一遍，**非零退出码即失败**。
 #
@@ -71,14 +72,14 @@ jobs:
       - name: 黑盒测试（按文件循环）
         # 不跑 `pytest tests/` 全量：规模夹具与单文件隔离都按批次来（共享设计 §10）。
         # 单文件失败立即中断 -> 非零退出码 -> 作业失败。
+        # 用通配 `tests/test_*.py` 而不是逐行列文件名：新增测试文件不需要改 CI，
+        # 与 `scripts/check.sh` 的循环完全一致（「本地绿等于 CI 绿」）。
+        # `tests/test_09_ci.py` 另有断言：磁盘上每个 test_*.py 都必须被这里覆盖。
         # `-m "not external"` 排除依赖本机 claude CLI 的用例（CI 无凭据，且调用不确定）；
         # 端到端链路本身由下面的 pilot.sh 一步覆盖。
         run: |
           set -euo pipefail
-          for f in tests/test_01_*.py tests/test_02_*.py tests/test_03_*.py \
-                   tests/test_04_*.py tests/test_05_*.py tests/test_06_*.py \
-                   tests/test_07_*.py tests/test_08_*.py tests/test_09_*.py \
-                   tests/test_10_*.py; do
+          for f in tests/test_*.py; do
             echo "=== $f ==="
             python -m pytest "$f" -q -m "not external"
           done
@@ -148,10 +149,12 @@ jobs:
           echo "lint 以非零退出码报告了 MISSING_REQUIRED_PATH"
 
       - name: 安装模拟（install-sim.sh）
-        # 验证「随包资源」这一层：六个 SKILL.md 都被识别（skills.sh 只认有
-        # name + description 的），runtime/（flow-core + 规则 + 模板）随 skill 目录走，
+        # 验证「随包资源」这一层：`skills/` 下**每个**含 SKILL.md 的目录都被发现（清单自动派生，
+        # 不靠手写），且 frontmatter 的 name（等于目录名）与 description 非空（skills.sh 的识别条件）；
+        # 最小必需集合缺任一个即非零退出（不静默放过缺失 Skill），
+        # runtime/（flow-core + 规则 + 模板）随 skill 目录走，
         # 且安装后的 flow-core 只靠相对位置解析资源，不依赖源码仓库路径。
-        # 这是 SRS-FR-011 的实质内容，必须由 CI 守着。
+        # 这是 SRS-FR-011 与实际内容的实质，必须由 CI 守着。
         run: |
           set -euo pipefail
           TARGET="$(mktemp -d)"

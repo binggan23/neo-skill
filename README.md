@@ -18,7 +18,8 @@ npx skills@latest add binggan23/neo-skill -a claude
 > **已实测可用**：上面两条命令均已验证通过，Skill 全部被发现安装，
 > `neo-skill/runtime/`（`flow-core`、规则、模板）随包分发，安装后不依赖源码仓库路径。
 > （当时的实测范围是 v0.1.0 的 6 个 Skill；v0.1.1 新增只读 Skill `upstream-progress`，
-> 它的安装与分发发现需要在安装模拟/分发包的发现列表里同步才能随 `npx` 安装被识别。）
+> 安装模拟与分发包的 Skill 集合都是**从 `skills/` 自动派生**的（含 `SKILL.md` 的目录即一个 Skill），
+> 另有最小必需集合，缺任一个即非零退出——新增 Skill 不需要改任何清单。）
 > 完整实测证据与兼容性边界见 `docs/pilot-report.md`。
 > 若需在无网络环境离线分发，用 `scripts/build-dist.sh` 产出 `dist/neo-skill-<ver>.zip`。
 
@@ -57,7 +58,7 @@ skills/acceptance/SKILL.md             阶段 Skill：Demo、逐条 AC、验收�
 skills/upstream-progress/SKILL.md      基础 Skill：只读查询上游远端进度（本地提醒单列，不写回）
 tests/                                 flow-core CLI 黑盒测试
 scripts/build-dist.sh                  打包 zip + tar.gz + sha256（可重现）
-scripts/install-sim.sh                 模拟 skills.sh 安装到 .claude/skills/
+scripts/install-sim.sh                 模拟 skills.sh 安装到 .claude/skills/（Skill 清单自动派生）
 scripts/pilot.sh                       隔离端到端试点
 ```
 

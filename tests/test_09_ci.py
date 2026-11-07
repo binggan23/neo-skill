@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from pathlib import Path
 
@@ -85,6 +86,28 @@ def test_workflow_runs_tests_file_by_file():
     forbidden = re.compile(r"pytest\s+tests/?(\s|$)", re.IGNORECASE)
     assert not forbidden.search(steps), "工作流里出现了全量 `pytest tests/`"
     assert "set -euo pipefail" in steps
+
+
+def test_workflow_covers_every_test_file():
+    """每个 `tests/test_*.py` 都必须被工作流的循环覆盖，否则新测试文件会静默漏跑。
+
+    反向约束：新增测试文件而不加入 CI = CI 绿但该文件从未跑过，这正是「静默放过」。
+    所以这里把「工作流里列到的模式」与「磁盘上真实存在的文件」做双向覆盖断言。
+    """
+    listed = set(re.findall(r"tests/test_[^\s;\"']*\.py", run_steps()))
+    assert listed, "工作流里没有看到按文件列出的测试"
+    patterns = {Path(name).name for name in listed}
+    missing = sorted(
+        path.name for path in (REPO_ROOT / "tests").glob("test_*.py")
+        if not any(fnmatch.fnmatch(path.name, pattern) for pattern in patterns)
+    )
+    assert missing == [], f"这些测试文件没被 CI 的文件循环覆盖（会静默漏跑）：{missing}"
+    # 反向：工作流里列到的 pattern 必须真的存在匹配文件（防配置漂移）
+    stale = sorted(
+        pattern for pattern in patterns
+        if not any(fnmatch.fnmatch(path.name, pattern) for path in (REPO_ROOT / "tests").glob("test_*.py"))
+    )
+    assert stale == [], f"工作流里列了不存在的测试 pattern：{stale}"
 
 
 def test_workflow_runs_doctor_and_lint_on_temp_project():

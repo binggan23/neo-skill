@@ -9,14 +9,19 @@
 | 当前任务 | 阅读入口 | 读完应能回答 |
 | --- | --- | --- |
 | 首次理解系统或划分新能力 | [01-architecture.md](01-architecture.md) | Skill、人工、CLI、文件分别负责什么，为什么这样分工 |
-| **查某个 Skill 何时用、作用、写哪里，或要增删 Skill** | [07-skill-catalog.md](07-skill-catalog.md) | 六个 Skill 各自的触发条件、作用、写入边界、主要命令组；增删 Skill 的六步清单 |
-| 接手一个项目，判断下一步调用谁 | [02-stage-flow.md](02-stage-flow.md) | 六个 Skill 何时用、读写什么、交接什么、完成标准是什么 |
+| **查某个 Skill 何时用、作用、写哪里，或要增删 Skill** | [07-skill-catalog.md](07-skill-catalog.md) | 七个 Skill 各自的触发条件、作用、写入边界、主要命令组；入口/基础分层；增删 Skill 的六步清单 |
+| 接手一个项目，判断下一步调用谁 | [02-stage-flow.md](02-stage-flow.md) | 七个 Skill 何时用、读写什么、交接什么、完成标准是什么 |
+| 用户问「上游做到哪了」、要查远端发布/进行中事项，或只想看本地有没有未提交/未推送 | [07-skill-catalog.md](07-skill-catalog.md) 的 `upstream-progress` 行 + [02-stage-flow.md](02-stage-flow.md) 「上游进度查询」小节 | 只读查询与阶段转移的区别；远端事实、来源、不确定性、本地提醒分别怎么报；为什么不自动写回 |
 | 改状态、职责或审批流程 | [03-state-and-decisions.md](03-state-and-decisions.md) | REQ/PRD 全部声明边、人工决定与机械推进如何区分 |
 | 改 hash、验证、验收或恢复 | [04-baseline-and-recovery.md](04-baseline-and-recovery.md) | 基线怎样失效，证据怎样留存，失败怎样安全恢复 |
 | 讨论 P1、重构或跨 Agent 支持 | [05-next-version.md](05-next-version.md) | 怎样从真实痛点形成候选，哪些约束必须保留，怎样验证与交付 |
 | 看图、修图或清理可视化产物 | [06-visualization.md](06-visualization.md) | 四张图各表示什么、哪些地方被简化、保留哪些文件及如何重建 |
 
 顺序阅读：01 → 07 → 02 → 03 → 04 → 05；06 为配套图件索引。AI 优先读取 Markdown 与源码，避免把大型渲染 HTML 当作主要上下文。
+
+**分层**：七个 Skill 分入口/编排类（`neo-skill`、`project`、`requirements`、`prd`、`dev`、`acceptance`）
+与可复用基础类（`upstream-progress`，同时也可被用户直接调用）。入口可以调用基础 Skill，
+基础 Skill 不得隐式启动无关的入口工作流；具体理由见 [07](07-skill-catalog.md) 开头的分层表。
 
 **Skill 增删的闸门**：本目录把 [07-skill-catalog.md](07-skill-catalog.md) 当作 Skill 清单的唯一导航入口。新增、删除、改名或改变写入边界时，先改那张表并走完其中六步（SKILL.md、路由、流程、图件、验证），再算完成。
 

@@ -8,6 +8,7 @@
 用户提出意图、作决定
   ↓
 neo-skill 路由 → project / requirements / prd / dev / acceptance
+              （upstream-progress 可在任意时刻插入：只读，不改状态）
   ↓ 读取事实、grilling、生成候选、请求确认
 flow-core CLI
   ↓ 校验、取锁、受控写入、记录历史、返回 JSON

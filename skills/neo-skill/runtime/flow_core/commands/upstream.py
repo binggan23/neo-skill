@@ -248,6 +248,9 @@ def _show(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resul
             suggestion="项目负责人确认上游信息后写入绑定；也可以继续接入，进度查询暂不可用",
             next_actions=[BIND_COMMAND],
         )
+    # `configured` 为真即可断定 binding 非空；显式断言只是让类型检查也能收敛，
+    # 行为与「未配置就报错」完全一致（断言在 `-O` 下被去掉也不影响）。
+    assert located.binding is not None
     result = Result(command=f"{NAME}.show")
     result.data.update(_data_of(located, located.document or ""))
     result.notes.append(f"上游绑定位于 {located.document}，来源 {len(located.binding.sources)} 个")
@@ -259,7 +262,7 @@ def _status(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Res
     located = _scan(workspace)
     result = Result(command=f"{NAME}.status")
     result.data.update(_data_of(located, located.document or ""))
-    if located.configured:
+    if located.binding is not None:
         result.notes.append(f"已绑定上游 {located.binding.identifier}（{located.document}）")
     else:
         result.notes.append("未配置上游绑定：进度查询不可用，接入流程可继续")

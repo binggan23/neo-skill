@@ -325,6 +325,12 @@ def test_已存在但无法解析的区块也需_force_才替换(project: Path) 
     assert conflict.error_codes() == ["UPSTREAM_BINDING_CONFLICT"]
     assert read(project / "AGENTS.md") == before
 
+    # 未 force 前只读展示也要明确告知「配置坏了」，而不是谎报「未配置」
+    shown = run_cli(project, "upstream", "show")
+    assert shown.code == 1
+    assert shown.error_codes() == ["UPSTREAM_BINDING_INVALID"]
+    assert shown.json["next_actions"]
+
     forced = bind(project, "--force")
 
     assert forced.code == 0, forced

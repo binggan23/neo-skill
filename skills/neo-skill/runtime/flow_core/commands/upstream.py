@@ -37,6 +37,8 @@
 不重写文件，因此 `recorded_at` / `recorded_by` 保持首次写入的值。
 已有区块但内容不同（或根本解析不出来）→ `UPSTREAM_BINDING_CONFLICT`，
 只有显式 `--force` 才替换区块内容，仍不动区块外任何字节。
+`show` 对「区块在但解析不出来」单独报 `UPSTREAM_BINDING_INVALID`，
+不谎报成 `UPSTREAM_NOT_CONFIGURED`。
 """
 
 from __future__ import annotations
@@ -227,6 +229,19 @@ def _bind(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Resul
 def _show(workspace: Workspace, rules: Rules, args: argparse.Namespace) -> Result:
     located = _scan(workspace)
     if not located.configured:
+        if located.span is not None:
+            # 区块在，但内容解析不出来：区分于「从未配置」，提醒用户修成或 --force 重写
+            raise FlowError(
+                "UPSTREAM_BINDING_INVALID",
+                f"{located.document} 中已有上游绑定区块，但无法解析为可用配置"
+                f"（{'；'.join(located.extra.get('parse_problems') or []) or '字段缺失'}）",
+                object=located.document,
+                suggestion="核对区块内 YAML；确认按本次输入重写时加 --force（仍然只改区块）",
+                next_actions=[
+                    f"{FLOW_CORE} upstream bind --id {ID_PLACEHOLDER} "
+                    f"--source {SOURCE_PLACEHOLDER} --actor {ACTOR_PLACEHOLDER} --confirm --force",
+                ],
+            )
         raise FlowError(
             "UPSTREAM_NOT_CONFIGURED",
             "当前项目还没有可解析的上游绑定（AGENTS.md 与 README.md 中都没有绑定区块）",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neo-skill"
-version = "0.1.0"
+version = "0.1.1"
 description = "Neo Skill P0：以 Skill 为入口、以 flow-core 为确定性内核的研发闭环"
 readme = "README.md"
 requires-python = ">=3.11"

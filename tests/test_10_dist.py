@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import os
 import shutil
 import subprocess
@@ -239,3 +240,21 @@ def test_dist_不含绝对仓库路径(dist: Path) -> None:
         for name in zf.namelist():
             data = zf.read(name)
             assert marker not in data, f"{name} 里写死了仓库路径 {REPO_ROOT}"
+
+
+def test_dist_包内_pyproject_版本与_flow_core_一致(dist: Path) -> None:
+    """分发包里 `pip install .` 拿到的版本必须与 `flow-core --version` 一致。
+
+    版本号有两处（`pyproject.toml` 与 `flow_core/__init__.py`），而 `build-dist.sh` 只用后者
+    命名顶层目录——两处漂移时分发包看起来是 0.1.1、装出来却是 0.1.0，且没有任何断言会发现。
+    """
+    version = _version()
+    top = f"neo-skill-{version}"
+    with zipfile.ZipFile(dist / f"{top}.zip") as zf:
+        pyproject = zf.read(f"{top}/pyproject.toml").decode("utf-8")
+    declared = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
+    assert declared, "分发包里的 pyproject.toml 没有 version 字段"
+    assert declared.group(1) == version, (
+        f"pyproject.toml 声明 {declared.group(1)}，flow-core 是 {version}；"
+        "解压后 pip install . 会装成错误的版本"
+    )

@@ -273,3 +273,49 @@ def test_可观察断言检查能抓住模糊的验收项(tmp_path: Path) -> Non
     sharp = "- [ ] 删掉一个 Skill 目录 → install-sim.sh 退出码非零，并报 MISSING-REQUIRED。"
     assert not OBSERVABLE_RE.search(vague), "模糊的验收项逃过了检查，检查没有作用"
     assert OBSERVABLE_RE.search(sharp), "写得清楚的验收项被误判"
+
+
+# --------------------------------------------------------------------------
+# 写入边界只允许一处事实来源（retro：fix.md 与 05-next-version.md 各写一份，漂成假话）
+# --------------------------------------------------------------------------
+BOUNDARIES = REPO_ROOT / "docs" / "agents" / "write-boundaries.md"
+FIX_AGENT = REPO_ROOT / ".agents" / "agents" / "fix.md"
+NEXT_VERSION = REPO_ROOT / "docs" / "agents" / "p0-workflow" / "05-next-version.md"
+
+
+def test_写入边界文档存在且列出关键路径():
+    text = read(BOUNDARIES)
+    for marker in ("~/.agents/skills", "skills/**", ".specify/", ".scratch/"):
+        assert marker in text, f"写入边界没提到 {marker}"
+    assert "授权" in text, "写入边界没写「改规则需要授权」"
+
+
+def test_写入边界的消费者都只留指针不复制规则():
+    """fix agent 与交付文档都必须指向 write-boundaries.md。
+
+    复制一份规则就必然漂移（本仓库真实发生过：一处说 skills/** 一律不动，
+    另一处说 runtime 就在这条路径下）。所以这里断言两件事：
+    两边都出现指针；且都不再出现**旧版**的具体断言（`It restricts `skills/**``、
+    `本地脚本可能 SKIP`），因为它们已经过期。
+    """
+    fix_text = read(FIX_AGENT)
+    assert "docs/agents/write-boundaries.md" in fix_text, "fix.md 没有指向写入边界"
+    assert "single source of truth" in fix_text, "fix.md 没声明写入边界是唯一事实来源"
+
+    next_text = read(NEXT_VERSION)
+    assert "write-boundaries.md" in next_text, "05-next-version 没有指向写入边界"
+
+    stale = [
+        ("fix.md", fix_text, "installer-owned inputs"),
+        ("05-next-version", next_text, "本地脚本可能 SKIP"),
+    ]
+    offenders = [name for name, text, needle in stale if needle in text]
+    assert offenders == [], f"还留着过期的规则副本：{offenders}"
+
+
+def test_写入边界指针检查会抓住复制的规则(tmp_path: Path) -> None:
+    """合成一份复制了规则的 agent 文件，证明上一条断言真的会红。"""
+    copied = "## Hard limits\n\n- **Never touch skills.** `skills/**` are installer-owned inputs.\n"
+    assert "installer-owned inputs" in copied
+    assert "docs/agents/write-boundaries.md" not in copied
+    # 两条断言各自都会失败，所以上一条测试不是装饰

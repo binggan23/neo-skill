@@ -548,7 +548,7 @@ def _verify_record(workspace: Workspace, rules: Rules, args: argparse.Namespace)
     if outcome not in (verification.RESULT_PASS, verification.RESULT_FAIL,
                        verification.RESULT_BLOCKED):
         raise FlowError("INVALID_RESULT", f"不支持的验证结论 {outcome}",
-                        suggestion="只允许 pass / fail / blocked") 
+                        suggestion="只允许 pass / fail / blocked")
     acs = _resolve_acs(args, record)
     source = _clean(getattr(args, "output_file", None))
     if not source:

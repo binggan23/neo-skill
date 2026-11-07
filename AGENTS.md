@@ -20,17 +20,11 @@ Default five triage roles, label string equal to the role name. See `docs/agents
 探索（文件地图、实现落点、调用链与影响面、外部一手资料）**派 subagent 去读**（`Explore` 类型，见
 `.pi/subagents-lite.json`），主线程接着干活；产物写成 Markdown 笔记放在**仓库外**，后续 agent 用指针复用。
 
-**代码定位走 CodeGraph**：`codegraph_explore`（宽问题）→ `codegraph_search`（按名找）→
-`codegraph_node` / `codegraph_callers` / `codegraph_callees` → `codegraph_impact`（改动半径）。
-`rg` / `read` 兜底：字面量常量、生成代码、迁移/配置、`*.md`、索引漏掉的符号。
-
-**探索第一动作是 `codegraph_status`**，不是 `find` / `grep`。索引缺失、有变更、工具不可用
-三种分支的处理见 `docs/agents/codegraph.md`。**每个新 worktree 必须先 `codegraph init`**
-（worktree 不共享主仓库索引，这是本仓库的结构性陷阱，详见同一文件）。
-
-对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；**skill 文件保持原样**；
-给子 agent 的 brief 里必须显式带上「先 `codegraph_status`，再探索」，否则子 agent 继承不到。
-（外部资料回到一手来源，不停在二手转述。）
+**代码定位先 `codegraph_status`，再按问题形状选 `codegraph_explore` / `search` / `node` / `impact`**；
+索引缺失、有变更、工具不可用、以及 **worktree 没有索引**四条分支的处理见
+[docs/agents/codegraph.md](docs/agents/codegraph.md)。`rg` / `read` 用于字面量常量、生成代码、`*.md`
+与索引漏掉的符号。给子 agent 的 brief 里显式带上「先 `codegraph_status`」，否则子 agent 继承不到。
+对 `/research`、`/implement`、`/implement-spec`（含其 exploration subagent）同样生效；skill 文件保持原样。
 
 ### code-review 之后：派 `fix` 修
 

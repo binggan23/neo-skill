@@ -33,8 +33,8 @@ The short version, so you know what to expect there:
 - Gate records, baselines, and `team.md` are never edited to make a check pass; escalate instead.
   Closing a ticket (`Status:` line, `- [ ]` → `- [x]`, the `## 实现结果` section) is normal closeout, not a bypass.
 - Stay inside the reviewed diff; do not widen the change.
-- Commit on the branch you were given and leave the tree clean. Never `push`, `rebase`, `reset --hard`,
-  `stash drop`, or `worktree remove`.
+- Commit on the branch you were given and leave the tree clean unless the brief says otherwise — see the
+  boundaries file. Never `push`, `rebase`, `reset --hard`, `stash drop`, or `worktree remove`.
 
 If a finding asks for something the boundaries file forbids, **reject it and say which rule** rather than
 improvising. If the rule itself looks wrong, escalate to the repo owner — do not edit the rule.

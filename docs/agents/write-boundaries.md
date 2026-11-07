@@ -13,7 +13,8 @@ tracked → 可改；安装器生成 → 不动。
 
 | 路径 | 归属 | 可改？ |
 | --- | --- | --- |
-| `~/.agents/skills/**`、任何 `.agents/skills/**`、`.pi/**` | 安装器产物（用户机器上的已安装副本） | **不动**。要让行为生效，改本仓库的 `skills/` 再重新安装 |
+| `~/.agents/skills/**`、任何 `.agents/skills/**` | 安装器产物（用户机器上的已安装副本） | **不动**。要让行为生效，改本仓库的 `skills/` 再重新安装 |
+| `.pi/**` | 本机配置与会话状态 | **不动**，不进版本控制也不该改 |
 | 本仓库 `skills/**` | 产品源码：`skills/neo-skill/runtime/flow_core/**` 是被测的 Python，`skills/*/SKILL.md` 是本仓库交付的 Skill | **可改**，与 `src/` 同级待遇 |
 | `scripts/`、`tests/`、`docs/`、`AGENTS.md`、`pyproject.toml` | 仓库工程面 | 可改，按任务范围 |
 | `.specify/`、基线 hash、`00-management/team.md`、`07-acceptance/` 记录 | 门禁与人工决定记录 | **不为通过检查而改**。真正的问题是基线错 → 写进报告的 Escalated，不自己动手 |

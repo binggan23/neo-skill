@@ -223,7 +223,7 @@ def test_进度_Skill_写明只读边界与本地提醒的独立地位():
 OBSERVABLE_RE = re.compile(
     r"`[^`]+`"                 # 反引号里的命令/路径/错误码
     r"|[A-Z][A-Z0-9_]{3,}"     # 全大写错误码/常量（MISSING-REQUIRED、NEO_SKILL_HOME）
-    r"|退出码|非零|退出 \d"     # 退出码表述
+    r"|退出码 ?\d+|退出 ?\d+"   # 具体退出码（退出码 1 / 退出 0）
     r"|→"                       # 因果箭头（删掉 X → 非零退出）
     r"|\d+ ?(个|条|次|秒|项)"    # 可数的断言（7 个 Skill、10 秒）
 )
@@ -269,8 +269,8 @@ def test_未关闭的票每条验收项都写明了可观察断言():
 
 def test_可观察断言检查能抓住模糊的验收项(tmp_path: Path) -> None:
     """合成一张票，证明上一条检查真的会红（否则它只是个永远为真的装饰）。"""
-    vague = "- [ ] 系统不能静默漏掉 Skill。"
-    sharp = "- [ ] 删掉一个 Skill 目录 → install-sim.sh 退出码非零，并报 MISSING-REQUIRED。"
+    vague = "- [ ] 校验失败时必须非零退出，并明确退出码。"
+    sharp = "- [ ] 删掉一个 Skill 目录 → install-sim.sh 退出码 1，并报 MISSING-REQUIRED。"
     assert not OBSERVABLE_RE.search(vague), "模糊的验收项逃过了检查，检查没有作用"
     assert OBSERVABLE_RE.search(sharp), "写得清楚的验收项被误判"
 
@@ -301,6 +301,9 @@ def test_写入边界的消费者都只留指针不复制规则():
     fix_text = read(FIX_AGENT)
     assert "docs/agents/write-boundaries.md" in fix_text, "fix.md 没有指向写入边界"
     assert "single source of truth" in fix_text, "fix.md 没声明写入边界是唯一事实来源"
+    assert "leave the tree clean unless the brief says otherwise" in fix_text, (
+        "fix.md 没保留 brief 要求留脏工作区的例外"
+    )
 
     next_text = read(NEXT_VERSION)
     assert "write-boundaries.md" in next_text, "05-next-version 没有指向写入边界"
@@ -311,6 +314,14 @@ def test_写入边界的消费者都只留指针不复制规则():
     ]
     offenders = [name for name, text, needle in stale if needle in text]
     assert offenders == [], f"还留着过期的规则副本：{offenders}"
+
+
+def test_本机配置不归为安装器产物() -> None:
+    rows = [line for line in read(BOUNDARIES).splitlines() if line.startswith("| `")]
+    installer = next(line for line in rows if "安装器产物" in line)
+    local = next(line for line in rows if ".pi/**" in line)
+    assert ".pi/**" not in installer, ".pi/ 是本机配置，不是安装器产物"
+    assert "本机配置" in local and "不进版本控制" in local
 
 
 def test_写入边界指针检查会抓住复制的规则(tmp_path: Path) -> None:

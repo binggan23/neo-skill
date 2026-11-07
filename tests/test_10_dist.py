@@ -252,7 +252,7 @@ def test_dist_包内_pyproject_版本与_flow_core_一致(dist: Path) -> None:
     top = f"neo-skill-{version}"
     with zipfile.ZipFile(dist / f"{top}.zip") as zf:
         pyproject = zf.read(f"{top}/pyproject.toml").decode("utf-8")
-    declared = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
+    declared = re.search(r'^\[project\]$(?:\n(?!\[)[^\n]*)*?\nversion = "([^"]+)"', pyproject, re.MULTILINE)
     assert declared, "分发包里的 pyproject.toml 没有 version 字段"
     assert declared.group(1) == version, (
         f"pyproject.toml 声明 {declared.group(1)}，flow-core 是 {version}；"
